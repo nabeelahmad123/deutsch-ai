@@ -276,10 +276,27 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > Next: `LG-14` — drive faults through real agent runs and report the
 > tool-call success / recovery rate.
 
-### Day 14 — `LG-14` Recovery behavior + recovery-rate report
-- [ ] Verify agent response per fault: retry / fallback / clarify / graceful fail — never hang/crash
-- [ ] Compute + report tool-call success and recovery rate from traces
-- **AC (first-class deliverable §11):** recovery-rate table produced from a scripted run.
+### Day 14 — `LG-14` Recovery behavior + recovery-rate report  `[x]`
+- [x] `backend/agent/recovery.py` — 7 scenarios (timeout retried / persistent,
+      malformed retried / worked-around, ambiguous clarified / safe-default,
+      cross-server notes-down), each a `FaultInjectingClient` + a `FakeLLM`
+      script encoding one recovery strategy. `run_scenario` catches crashes,
+      guards against hangs, classifies the disposition (recovered / clarified /
+      failed_gracefully / crashed / hung).
+- [x] `wrap_tool` now traces the sabotaged call too (`agent.tool_call.*`) so
+      tool-call-success maths counts failed attempts.
+- [x] `compute_metrics` → tool-call success rate, recovery rate, graceful-handling
+      rate; `render_report` → a Markdown table; `python -m backend.agent.recovery`
+      writes **`docs/FAILURE_RECOVERY.md`** (committed) and exits non-zero if
+      anything crashed or hung.
+- [x] `fake_llm.py` → `backend/agent/scripted_llm.py` (reusable stub, not test-only).
+- **AC met:** `docs/FAILURE_RECOVERY.md` — 7 scenarios, **tool-call success 62%**,
+  **recovery rate 71%**, **graceful-handling 100%** (0 crashed, 0 hung).
+  `test_recovery_report.py` asserts every scenario is handled and matches its
+  intended disposition. 507 pass + 2 skipped.
+
+> **Build-order step 6 (failure injection + tracing + recovery rate) is
+> complete.** Next: `LG-15`, the learner simulator.
 
 ### Day 15 — `LG-15` Learner simulator
 - [ ] `simulator.py`: parameterised forgetting curves; learner types fast/average/forgetful

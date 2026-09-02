@@ -9,9 +9,8 @@ import json
 
 from backend.agent.mcp_client import MCPToolClient
 from backend.agent.orchestrator import SessionRequest, start_session
+from backend.agent.scripted_llm import FakeLLM, response, text_block, tool_use
 from backend.tracing.tracer import Tracer
-
-from .fake_llm import FakeLLM, response, text_block, tool_use
 
 
 def _script():

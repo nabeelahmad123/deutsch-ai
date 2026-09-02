@@ -148,8 +148,7 @@ def test_fault_injecting_client_plugs_into_the_orchestrator(seeded_db, tmp_path)
     back, the (scripted) model retries, and the session still composes."""
     from backend.agent.mcp_client import build_default_clients
     from backend.agent.orchestrator import SessionRequest, run_session
-
-    from .fake_llm import FakeLLM, response, text_block, tool_use
+    from backend.agent.scripted_llm import FakeLLM, response, text_block, tool_use
 
     tracer = Tracer(tmp_path / "trace.jsonl")
     inner = build_default_clients(tracer=tracer)

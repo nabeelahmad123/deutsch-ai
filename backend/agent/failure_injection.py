@@ -72,10 +72,32 @@ def _select(specs: list[FaultSpec], tool: str, rng: random.Random) -> FaultSpec 
     return None
 
 
-def wrap_tool(call_fn, specs: list[FaultSpec], *, rng: random.Random | None = None, on_inject=None):
+def _apply_fault(name: str, fault: FaultSpec, call_fn, arguments) -> Any:
+    if fault.kind is FaultKind.timeout:
+        if fault.delay_seconds:
+            time.sleep(min(fault.delay_seconds, MAX_REAL_DELAY_SECONDS))
+        raise MCPToolError(
+            name, f"tool call '{name}' timed out after {fault.delay_seconds or 30}s (injected)"
+        )
+    if fault.kind is FaultKind.malformed_response:
+        return dict(MALFORMED_PAYLOAD)
+    return call_fn(name, arguments)  # unreachable: ambiguous_request never matches
+
+
+def wrap_tool(
+    call_fn,
+    specs: list[FaultSpec],
+    *,
+    rng: random.Random | None = None,
+    on_inject=None,
+    tracer: Tracer | None = None,
+):
     """Wrap a ``call(name, arguments)`` callable so it may inject a fault first.
 
-    ``on_inject(tool, spec)`` is called whenever a fault fires.
+    ``on_inject(tool, spec)`` fires whenever a fault does. If ``tracer`` is given,
+    an injected call still produces an ``agent.tool_call.<name>`` trace event
+    (error for a timeout, ok-with-junk for a malformed response), so
+    tool-call-success maths counts the sabotaged attempt.
     """
     rng = rng or random.Random()
     active = list(specs)
@@ -83,19 +105,15 @@ def wrap_tool(call_fn, specs: list[FaultSpec], *, rng: random.Random | None = No
     def wrapped(name: str, arguments: dict | None = None) -> Any:
         fault = _select(active, name, rng)
         if fault is None:
-            return call_fn(name, arguments)
+            return call_fn(name, arguments)  # inner client traces this itself
         if on_inject is not None:
             on_inject(name, fault)
-
-        if fault.kind is FaultKind.timeout:
-            if fault.delay_seconds:
-                time.sleep(min(fault.delay_seconds, MAX_REAL_DELAY_SECONDS))
-            raise MCPToolError(
-                name, f"tool call '{name}' timed out after {fault.delay_seconds or 30}s (injected)"
-            )
-        if fault.kind is FaultKind.malformed_response:
-            return dict(MALFORMED_PAYLOAD)
-        return call_fn(name, arguments)  # unreachable: ambiguous_request never matches
+        if tracer is None:
+            return _apply_fault(name, fault, call_fn, arguments)
+        with tracer.trace_tool_call(f"agent.tool_call.{name}", arguments or {}) as box:
+            result = _apply_fault(name, fault, call_fn, arguments)
+            box["output"] = "<injected malformed response>"
+            return result
 
     return wrapped
 
@@ -114,7 +132,13 @@ class FaultInjectingClient:
         self._inner = inner
         self._tracer = tracer or get_tracer()
         self.injected: list[dict] = []
-        self._call = wrap_tool(inner.call, specs, rng=random.Random(seed), on_inject=self._record)
+        self._call = wrap_tool(
+            inner.call,
+            specs,
+            rng=random.Random(seed),
+            on_inject=self._record,
+            tracer=self._tracer,
+        )
 
     # -- same interface as MCPToolClient / MultiServerToolClient --------------
     def tool_specs(self) -> list[dict]:

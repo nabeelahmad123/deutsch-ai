@@ -12,11 +12,10 @@ from backend.agent.mcp_client import (
     build_default_clients,
 )
 from backend.agent.orchestrator import SessionRequest, run_conversation
+from backend.agent.scripted_llm import FakeLLM, response, text_block, tool_use
 from backend.mcp_servers.learning_server.server import build_server as build_learning
 from backend.mcp_servers.secondary_server.server import build_server as build_notes
 from backend.tracing.tracer import Tracer
-
-from .fake_llm import FakeLLM, response, text_block, tool_use
 
 
 def test_multi_client_unions_specs_and_routes(seeded_db, tmp_path):

@@ -7,9 +7,8 @@ import json
 
 from backend.agent.mcp_client import MCPToolClient
 from backend.agent.orchestrator import MAX_TURNS, SessionRequest, run_session
+from backend.agent.scripted_llm import FakeLLM, response, text_block, tool_use
 from backend.tracing.tracer import Tracer
-
-from .fake_llm import FakeLLM, response, text_block, tool_use
 
 
 def _run(script, tmp_path, user_id=1, text="I have 10 minutes, German for work"):

@@ -54,6 +54,6 @@ Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Next: **step 5 — MCP serve
 | 4 | Agent + session flow (server #1) | done — compose → quiz → grade each answer → summary |
 | 4 | Agent + session flow (server #1) | scaffolded |
 | 5 | MCP server #2 + cross-server orchestration | done — one conversation spans learning + notes servers |
-| 6 | Failure injection + tracing + recovery rate | scaffolded (tracer done) |
+| 6 | Failure injection + tracing + recovery rate | done — see docs/FAILURE_RECOVERY.md |
 | 7 | Learner simulator + HLR vs SM-2 eval + plots | scaffolded |
 | 8 | Minimal frontend + Docker/CI + README | Docker/CI done |
