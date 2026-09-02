@@ -96,11 +96,25 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Week 2 — MCP server #1 + agent
 
-### Day 6 — `LG-06` MCP server #1 — profile + word tools
-- [ ] Server process with official MCP Python SDK, own transport/port
-- [ ] Tools: `get_user_profile`, `get_words_due_for_review`, `get_weak_words`, `get_new_words`
-- [ ] Each tool wraps `backend/core` only — no direct DB access from tool bodies beyond core
-- **AC:** tools callable from MCP inspector; inputs/outputs typed.
+### Day 6 — `LG-06` MCP server #1 — profile + word tools  `[x]`
+- [x] `MCPServer` (official SDK, `mcp` 2.1) in `learning_server/server.py`;
+      `__main__` runs stdio by default, `streamable-http` on `LEARNING_MCP_*`
+      (verified: HTTP server binds :8100, answers `initialize`)
+- [x] Tools: `get_user_profile`, `get_words_due_for_review`, `get_weak_words`,
+      `get_new_words` — typed via frozen dataclasses (`WordView`, `UserProfile`),
+      so each tool publishes a real JSON output schema
+- [x] Tool bodies call only `backend.core` — new `core/read_models.py` does
+      hydration + the profile projection; `scheduler.weak_words` added. No ad-hoc
+      DB queries in tool code.
+- [x] Unknown user → `ToolError` (clean error result over the wire); limits clamped
+- [x] tz fix: `scheduler` now normalises `review_logs.timestamp` to aware-UTC
+      (SQLite hands back naive) so due-date maths never mixes naive/aware
+- **AC met:** `backend/mcp_servers/tests/` drives all four tools in-process via
+  `server.call_tool` (manifest, schemas, shapes, error path, clamping). 407 tests
+  pass; core still 100%. Standalone MCP-client / Inspector session is LG-08.
+
+> Stack note: `mcp` resolved to 2.1 (FastMCP→MCPServer rename); API is otherwise
+> the same. Pinned `mcp>=2.1,<3`.
 
 ### Day 7 — `LG-07` MCP server #1 — quiz + grading + state
 - [ ] `create_quiz(word_ids, quiz_type)`, `update_learning_state(user_id, word_id, correct)`

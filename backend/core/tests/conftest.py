@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.models import User, Word
 from backend.db.session import configure, create_all, session_scope
 
-T0 = dt.datetime(2026, 1, 1, 9, 0, 0)
+T0 = dt.datetime(2026, 1, 1, 9, 0, 0, tzinfo=dt.UTC)
 
 # 40 words, ranks 1..40, ten per CEFR band, a couple carrying a topic.
 _CEFR_BANDS = ["A1", "A2", "B1", "B2"]

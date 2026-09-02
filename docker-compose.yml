@@ -52,12 +52,14 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:-german}@postgres:5432/${POSTGRES_DB:-german}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LEARNING_MCP_TRANSPORT: streamable-http
+      LEARNING_MCP_HOST: 0.0.0.0
       LEARNING_MCP_PORT: "8100"
     ports:
       - "8100:8100"
     depends_on:
-      postgres:
-        condition: service_healthy
+      backend:
+        condition: service_healthy  # backend runs the migrations + seed
 
   secondary-mcp:
     build:

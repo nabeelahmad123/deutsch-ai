@@ -106,6 +106,18 @@ class SessionPlan:
         return [*self.review_word_ids, *self.new_word_ids]
 
 
+def _as_utc(value: dt.datetime) -> dt.datetime:
+    """Normalise a datetime to timezone-aware UTC.
+
+    ``review_logs.timestamp`` is declared ``timezone=True`` but SQLite (and some
+    round-trips) hand back naive values; treat those as UTC so due-date maths
+    never mixes naive and aware datetimes.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=dt.UTC)
+    return value.astimezone(dt.UTC)
+
+
 def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
 
@@ -148,7 +160,7 @@ def replay(logs: Iterable[ReviewLog]) -> CardState:
     state = CardState()
     for log in logs:
         state = sm2_update(state, quality_from_response(log.correct, log.response_time_ms))
-        state.last_reviewed = log.timestamp
+        state.last_reviewed = _as_utc(log.timestamp)
     return state
 
 
@@ -161,30 +173,53 @@ def get_card_state(session: DbSession, user_id: int, word_id: WordId) -> CardSta
     return replay(logs)
 
 
+def _logs_by_word(session: DbSession, user_id: int) -> dict[int, list[ReviewLog]]:
+    """All of a user's review logs, grouped by word id, chronological within."""
+    logs = session.scalars(
+        select(ReviewLog)
+        .where(ReviewLog.user_id == user_id)
+        .order_by(ReviewLog.word_id, ReviewLog.timestamp, ReviewLog.id)
+    ).all()
+    grouped: dict[int, list[ReviewLog]] = {}
+    for log in logs:
+        grouped.setdefault(log.word_id, []).append(log)
+    return grouped
+
+
 def words_due_for_review(session: DbSession, user_id: int, as_of: dt.datetime) -> list[WordId]:
     """Word ids whose reconstructed due date is on or before ``as_of``.
 
     Ordered by due date (most overdue first), then word id. New words (no review
     history) are never "due" -- they are handled by ``select_new_words``.
     """
-    logs = session.scalars(
-        select(ReviewLog)
-        .where(ReviewLog.user_id == user_id)
-        .order_by(ReviewLog.word_id, ReviewLog.timestamp, ReviewLog.id)
-    ).all()
-
-    by_word: dict[int, list[ReviewLog]] = {}
-    for log in logs:
-        by_word.setdefault(log.word_id, []).append(log)
-
+    as_of = _as_utc(as_of)
     due: list[tuple[dt.datetime, int]] = []
-    for word_id, word_logs in by_word.items():
+    for word_id, word_logs in _logs_by_word(session, user_id).items():
         state = replay(word_logs)
         if state.is_due(as_of):
             due.append((state.due_at(), word_id))
 
     due.sort(key=lambda pair: (pair[0], pair[1]))
     return [word_id for _due_at, word_id in due]
+
+
+def weak_words(session: DbSession, user_id: int, limit: int) -> list[WordId]:
+    """The user's most fragile seen words, weakest first.
+
+    Weakness is ranked by the reconstructed SM-2 ease factor (lower = harder for
+    this learner), then by historical accuracy, then word id. New words are not
+    included -- weakness needs a track record.
+    """
+    if limit <= 0:
+        return []
+    scored: list[tuple[float, float, int]] = []
+    for word_id, word_logs in _logs_by_word(session, user_id).items():
+        state = replay(word_logs)
+        correct = sum(1 for log in word_logs if log.correct)
+        accuracy = correct / len(word_logs)
+        scored.append((state.ease_factor, accuracy, word_id))
+    scored.sort()
+    return [word_id for _ef, _acc, word_id in scored[:limit]]
 
 
 def update_after_review(
@@ -212,7 +247,7 @@ def update_after_review(
         ReviewLog(
             user_id=user_id,
             word_id=word_id,
-            timestamp=as_of or dt.datetime.now(dt.UTC),
+            timestamp=_as_utc(as_of or dt.datetime.now(dt.UTC)),
             correct=correct,
             response_time_ms=max(0, response_time_ms),
             source=ReviewSource.review if seen_before else ReviewSource.new,
@@ -299,5 +334,6 @@ __all__ = [
     "select_new_words",
     "sm2_update",
     "update_after_review",
+    "weak_words",
     "words_due_for_review",
 ]

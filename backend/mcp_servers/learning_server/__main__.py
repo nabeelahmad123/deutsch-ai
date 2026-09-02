@@ -1,28 +1,29 @@
-"""MCP server #1 -- learning tools (CLAUDE.md section 8).
+"""Entry point for MCP server #1 -- learning tools (CLAUDE.md section 8).
 
-Built with the official MCP Python SDK. Exposes as TOOLS:
-  get_user_profile, get_words_due_for_review, get_weak_words, get_new_words,
-  create_quiz, evaluate_answer, update_learning_state, create_learning_session
-and the vocab table as an MCP RESOURCE.
-
-Every tool wraps the deterministic core in ``backend/core`` -- the agent reaches
-the data layer only through here (non-negotiable principle #3). Runs as its own
-process (principle #5).
-
-Day-1 status: stub entrypoint. This is build-order step 3; it must be tested
-standalone against an MCP client before the agent depends on it.
+Runs as its own process (non-negotiable principle #5). Transport defaults to
+stdio (easiest for the MCP Inspector / Claude Desktop / standalone testing);
+set LEARNING_MCP_TRANSPORT=streamable-http to serve over HTTP on
+LEARNING_MCP_HOST:LEARNING_MCP_PORT (what docker-compose uses).
 """
 
 from __future__ import annotations
 
 import os
 
+from backend.mcp_servers.learning_server.server import build_server
+
 
 def main() -> None:
-    port = os.environ.get("LEARNING_MCP_PORT", "8100")
-    raise SystemExit(
-        f"learning MCP server not implemented yet (build-order step 3). " f"Would bind port {port}."
-    )
+    server = build_server()
+    transport = os.environ.get("LEARNING_MCP_TRANSPORT", "stdio")
+    if transport == "stdio":
+        server.run("stdio")
+    else:
+        server.run(
+            "streamable-http",
+            host=os.environ.get("LEARNING_MCP_HOST", "127.0.0.1"),
+            port=int(os.environ.get("LEARNING_MCP_PORT", "8100")),
+        )
 
 
 if __name__ == "__main__":
