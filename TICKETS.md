@@ -298,10 +298,24 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > **Build-order step 6 (failure injection + tracing + recovery rate) is
 > complete.** Next: `LG-15`, the learner simulator.
 
-### Day 15 — `LG-15` Learner simulator
-- [ ] `simulator.py`: parameterised forgetting curves; learner types fast/average/forgetful
-- [ ] Emits `(word_id, correct, response_time, elapsed_since_last_review)` logs; seeded RNG
-- **AC:** fixed seed → identical logs; three learner types visibly differ in retention.
+### Day 15 — `LG-15` Learner simulator  `[x]`
+- [x] `learner_model/simulator.py` — forgetting-curve model: `p = 2**(-elapsed/h)`
+      + logistic noise; success consolidates `h` (`learning_gain` minus the
+      `decay_rate` fraction lost); a lapse resets `h`. `MemoryState`,
+      `Interaction(word_id, review_index, t_days, elapsed_days, correct,
+      response_time_ms, p_recall)`.
+- [x] `Simulator.review(state, elapsed, rng, *, first)` — the primitive LG-17
+      drives with SM-2 / HLR intervals. `SimulatedLearner.of_type("fast" | ...)`
+      + `generate_logs(word_ids, reviews_per_word, schedule)` for standalone,
+      time-ordered logs. `expanding_schedule` / `fixed_schedule`. Plain Python +
+      seeded `random.Random`.
+- **AC met:** `test_simulator.py` — fixed seed → identical logs (diff seed
+      diverges); retention **fast 0.67 > average 0.57 > forgetful 0.50**
+      (expanding schedule; gap > 0.1); recall prob falls with elapsed time;
+      response times bounded; half-life stays in range; lapse resets streak.
+      517 pass + 2 skipped.
+
+> Next: `LG-16` — Half-Life Regression model.
 
 ---
 
