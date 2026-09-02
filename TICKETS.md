@@ -214,10 +214,23 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Week 3 — MCP server #2 + failure handling + simulator
 
-### Day 11 — `LG-11` MCP server #2 (notes)
-- [ ] Second server, genuinely separate process + transport (principle #5)
-- [ ] Notes tools: write/append weekly progress summary to a markdown vault
-- **AC:** server runs and is testable standalone via MCP inspector.
+### Day 11 — `LG-11` MCP server #2 (notes)  `[x]`
+- [x] `backend/mcp_servers/secondary_server/` — its own `MCPServer("notes")`, own
+      process (`python -m backend.mcp_servers.secondary_server`), own transport
+      (stdio / `SECONDARY_MCP_TRANSPORT=streamable-http` on :8101), own storage
+      (a filesystem Markdown vault, **not** Postgres). `test_secondary_server.py`
+      AST-asserts it imports nothing from `learning_server` / `backend.core` /
+      `backend.db` (principle #5).
+- [x] `vault.py` — safe note names (traversal / absolute / weird chars rejected),
+      `write_note` / `append_note` / `read_note` / `list_notes`, and
+      `log_progress(summary, heading, date)` → appends a dated `## <date> — <h>`
+      section to `progress.md` (the section-10 weekly-summary export).
+- [x] 5 tools, each traced (`notes.tool.*`); errors → `ToolError`.
+- [x] `SECONDARY_MCP_KIND=calendar` exits with a clear "not implemented" message.
+- **AC met:** `test_standalone_client_secondary.py` drives a real `ClientSession`
+  over an in-memory transport (list tools, write/append/read/log_progress/list,
+  error survives) — independent of the agent and of server #1.
+  HTTP transport verified binding :8101. 486 pass + 1 skipped.
 
 ### Day 12 — `LG-12` Cross-server orchestration
 - [ ] Agent wired to both MCP servers in one conversation

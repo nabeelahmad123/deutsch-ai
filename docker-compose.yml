@@ -68,6 +68,8 @@ services:
     command: python -m backend.mcp_servers.secondary_server
     environment:
       SECONDARY_MCP_KIND: ${SECONDARY_MCP_KIND:-notes}
+      SECONDARY_MCP_TRANSPORT: streamable-http
+      SECONDARY_MCP_HOST: 0.0.0.0
       SECONDARY_MCP_PORT: "8101"
       NOTES_VAULT_DIR: /vault
     ports:

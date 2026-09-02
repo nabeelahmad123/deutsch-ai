@@ -16,8 +16,14 @@ T0 = dt.datetime(2026, 1, 1, 9, 0, 0, tzinfo=dt.UTC)
 
 @pytest.fixture(autouse=True)
 def _trace_to_tmp(tmp_path, monkeypatch):
-    """Keep tool-call traces out of the repo during tests."""
+    """Keep tool-call traces and the notes vault out of the repo during tests."""
     monkeypatch.setenv("TRACE_LOG_PATH", str(tmp_path / "trace.jsonl"))
+    monkeypatch.setenv("NOTES_VAULT_DIR", str(tmp_path / "vault"))
+
+
+@pytest.fixture
+def vault_path(tmp_path):
+    return tmp_path / "vault"
 
 
 @pytest.fixture

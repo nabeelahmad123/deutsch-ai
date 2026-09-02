@@ -49,7 +49,9 @@ def main() -> None:
     if args.auto:
         for question in session.quiz:
             fb = session.answer(question["question_id"], "(no answer)")
-            print(f"  {question['prompt']}  ->  {fb.correct} ({fb.method}); expected {fb.expected!r}")
+            print(
+                f"  {question['prompt']}  ->  {fb.correct} ({fb.method}); expected {fb.expected!r}"
+            )
         print(json.dumps(session.summary(), indent=2, ensure_ascii=False))
 
 
