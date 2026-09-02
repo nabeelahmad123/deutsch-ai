@@ -1,0 +1,71 @@
+[project]
+name = "learn-german"
+version = "0.1.0"
+description = "Adaptive German vocabulary learning system (agentic / MCP)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-dotenv>=1.0",
+    "numpy>=2.1",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Kept separate so `backend/core` and `backend/learner_model` CI can install a
+# minimal set with no agent/MCP/LLM dependencies (non-negotiable principle #1).
+agent = [
+    "anthropic>=0.40",
+    "mcp>=1.2",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.7",
+    "black>=24.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's Depends()/Query() belong in argument defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = [
+    "backend/core/tests",
+    "backend/learner_model/tests",
+    "backend/api/tests",
+]
+filterwarnings = [
+    "error::DeprecationWarning",
+    # Starlette's TestClient warns about httpx; not our code to fix.
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
+
+[tool.coverage.run]
+source = ["backend/core"]
+branch = true

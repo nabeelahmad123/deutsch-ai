@@ -1,0 +1,53 @@
+# learn-german
+
+Adaptive German vocabulary learning system — a production-shaped demo of agentic
+AI / MCP orchestration backed by modest ML rigor. **Not** a polished consumer app;
+see [`CLAUDE.md`](CLAUDE.md) for the full brief and [`docs/NON_GOALS.md`](docs/NON_GOALS.md).
+
+> This README is a stub. It is rewritten last (build-order step 8) to point at the
+> architecture diagram and real evaluation results.
+
+## Shape
+
+- **Deterministic scheduler** (`backend/core/`) — SM-2 + time-budget logic. No LLM,
+  no network except the DB. Fully unit-tested.
+- **Agent** (`backend/agent/`) — Anthropic tool-use loop. Turns "I have 10 minutes,
+  German for work" into a composed session by calling MCP tools. Never does the
+  scheduling math itself.
+- **Two independent MCP servers** (`backend/mcp_servers/`) — learning tools, and a
+  second surface (notes/calendar). Separate processes.
+- **Evaluation** (`backend/learner_model/`) — learner simulator + SM-2 vs. HLR vs.
+  random baseline, with calibration/retention/efficiency metrics.
+- **Failure injection + tracing** — deliberate faults, measured recovery.
+
+## Quick start
+
+```bash
+cp .env.example .env            # fill in ANTHROPIC_API_KEY etc.
+uv sync --extra dev             # Python 3.12 project env
+uv run pytest                   # runs backend/core + backend/learner_model
+
+# Data pipeline (build-order step 1) — starter set until the full list lands:
+uv run python -m backend.data.ingest_frequency  --sample
+uv run python -m backend.data.ingest_wiktionary --sample
+uv run python -m backend.data.build_seed        # regenerates backend/data/seed.sql
+
+# Full skeleton (Postgres real; other services are stubs for now):
+docker compose up
+```
+
+## Build order
+
+Tracked in `CLAUDE.md` section 15. Current: **step 1 — data pipeline + Postgres
+schema + FastAPI CRUD.**
+
+| # | Step | State |
+|---|------|-------|
+| 1 | Data pipeline + schema + FastAPI CRUD | in progress |
+| 2 | Deterministic scheduler, fully unit tested | scaffolded |
+| 3 | MCP server #1, tested standalone | scaffolded |
+| 4 | Agent + session flow (server #1) | scaffolded |
+| 5 | MCP server #2 + cross-server orchestration | scaffolded |
+| 6 | Failure injection + tracing + recovery rate | scaffolded (tracer done) |
+| 7 | Learner simulator + HLR vs SM-2 eval + plots | scaffolded |
+| 8 | Minimal frontend + Docker/CI + README | Docker/CI done |

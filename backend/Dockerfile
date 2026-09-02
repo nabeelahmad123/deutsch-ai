@@ -1,0 +1,17 @@
+# Shared image for the backend API and both MCP servers.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Install deps first for layer caching.
+COPY pyproject.toml README.md ./
+RUN pip install --upgrade pip && pip install ".[agent]"
+
+COPY backend ./backend
+
+EXPOSE 8000 8100 8101
+
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

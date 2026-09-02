@@ -1,0 +1,83 @@
+# Day-1 skeleton (CLAUDE.md section 18.2): Postgres is real; backend / MCP
+# servers / frontend are stubs and may fail health checks until their build
+# steps land. `docker compose up` should still bring the skeleton up.
+name: learn-german
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-german}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-german}
+      POSTGRES_DB: ${POSTGRES_DB:-german}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/data/seed.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-german} -d ${POSTGRES_DB:-german}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:-german}@postgres:5432/${POSTGRES_DB:-german}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  learning-mcp:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: python -m backend.mcp_servers.learning_server
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:-german}@postgres:5432/${POSTGRES_DB:-german}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LEARNING_MCP_PORT: "8100"
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  secondary-mcp:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: python -m backend.mcp_servers.secondary_server
+    environment:
+      SECONDARY_MCP_KIND: ${SECONDARY_MCP_KIND:-notes}
+      SECONDARY_MCP_PORT: "8101"
+      NOTES_VAULT_DIR: /vault
+    ports:
+      - "8101:8101"
+    volumes:
+      - vault:/vault
+
+  frontend:
+    image: nginx:alpine
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  vault:
