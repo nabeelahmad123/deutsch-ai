@@ -58,11 +58,22 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > **Build-order step 1 (sections 4–6) is now complete** bar the live-Postgres
 > smoke test, which needs Docker running.
 
-### Day 4 — `LG-04` SM-2 scheduler — state + updates
-- [ ] `CardState` reconstruction from `review_logs`; `sm2_update(state, quality)` recurrence
-- [ ] `words_due_for_review(user_id, as_of)` against sqlite fixture DB
-- [ ] `update_after_review(...)` writes a `review_logs` row + recomputes state
-- **AC:** unit tests with in-memory DB, no network; deterministic given fixed inputs.
+### Day 4 — `LG-04` SM-2 scheduler — state + updates  `[x]`
+- [x] `sm2_update(state, quality)` — full SuperMemo-2 recurrence (EF floor 1.3,
+      1/6/round(I·EF) intervals, reset on q<3); pure, no mutation
+- [x] `quality_from_response(correct, latency)` — deterministic bool+ms → grade 0..5
+- [x] `replay(logs)` / `get_card_state(session, …)` — state folded from `review_logs`
+      (no card-state table; matches the section 5 data model)
+- [x] `words_due_for_review(session, user_id, as_of)` — reconstruct per word,
+      filter by due date, order most-overdue-first
+- [x] `update_after_review(session, …, *, as_of=None)` — appends one `review_logs`
+      row; `source` = `new` on first review else `review`; clamps negative latency
+- [x] `Session` dataclass renamed `SessionPlan` (collided with the ORM model +
+      SQLAlchemy `Session`)
+- **AC met:** `backend/core/tests/test_sm2.py` (pure recurrence, EF floor,
+  hand-checked reference sequence `[4,4,3,5]`→rep 4/I 35/EF 2.46) +
+  `test_scheduler_db.py` (SQLite fixture, no network). 78 tests pass; **core
+  coverage 97%**. `select_new_words` / `build_session` still stubbed → LG-05.
 
 ### Day 5 — `LG-05` SM-2 scheduler — selection + session + coverage
 - [ ] `select_new_words(user_id, topic, n)` (frequency-ordered, unseen, CEFR-gated)

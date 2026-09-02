@@ -43,13 +43,14 @@ docker compose up
 
 ## Build order
 
-Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Current: finishing **step 1**
-(live-Postgres smoke test pending Docker), next is **step 2 — scheduler**.
+Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Current: **step 2 —
+scheduler**; SM-2 state + updates done (LG-04), word selection + session
+composition next (LG-05).
 
 | # | Step | State |
 |---|------|-------|
 | 1 | Data pipeline + schema + FastAPI CRUD | done (bar live-PG smoke test) |
-| 2 | Deterministic scheduler, fully unit tested | scaffolded |
+| 2 | Deterministic scheduler, fully unit tested | SM-2 state done; selection next |
 | 3 | MCP server #1, tested standalone | scaffolded |
 | 4 | Agent + session flow (server #1) | scaffolded |
 | 5 | MCP server #2 + cross-server orchestration | scaffolded |

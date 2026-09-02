@@ -4,24 +4,57 @@ CONTRACT (CLAUDE.md section 7). No LLM calls, no network calls except the DB, in
 this file or anything it imports. Given the same inputs it must always return the
 same outputs (non-negotiable principle #1).
 
-Day-1 status: signatures and the SM-2 update math are stubbed. Full
-implementation + >90% unit coverage is build-order step 2.
+Per-card SM-2 state is NOT stored -- it is reconstructed by folding ``sm2_update``
+over the card's ``review_logs`` (data model, section 5). ``update_after_review``
+therefore just appends a log row.
+
+Build-order step 2. LG-04 covers state + updates (``sm2_update``, ``replay``,
+``get_card_state``, ``words_due_for_review``, ``update_after_review``); word
+selection and session composition land in LG-05.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+import math
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DbSession
 
 from backend.core.session_budget import plan_budget
+from backend.db.models import ReviewLog, ReviewSource
 
 WordId = int
 
-# SM-2 constants (Wozniak). EF floor is 1.3.
+# --- SM-2 constants (Wozniak, SuperMemo 2) --------------------------------
 MIN_EASE_FACTOR = 1.3
 INITIAL_EASE_FACTOR = 2.5
 FIRST_INTERVAL_DAYS = 1
 SECOND_INTERVAL_DAYS = 6
+PASS_QUALITY_THRESHOLD = 3  # q >= 3 counts as successful recall
+
+# Deterministic (correct, latency) -> SM-2 grade 0..5. These thresholds are the
+# single place to tune how much answer speed influences scheduling.
+FAST_MS = 3_000
+MEDIUM_MS = 8_000
+QUALITY_CORRECT_FAST = 5
+QUALITY_CORRECT_MEDIUM = 4
+QUALITY_CORRECT_SLOW = 3
+QUALITY_INCORRECT = 2
+
+
+def quality_from_response(correct: bool, response_time_ms: int) -> int:
+    """Map a graded answer to an SM-2 quality (0..5), deterministically."""
+    if not correct:
+        return QUALITY_INCORRECT
+    rt = max(0, response_time_ms)
+    if rt <= FAST_MS:
+        return QUALITY_CORRECT_FAST
+    if rt <= MEDIUM_MS:
+        return QUALITY_CORRECT_MEDIUM
+    return QUALITY_CORRECT_SLOW
 
 
 @dataclass
@@ -38,9 +71,19 @@ class CardState:
             return None
         return self.last_reviewed + dt.timedelta(days=self.interval_days)
 
+    def is_due(self, as_of: dt.datetime) -> bool:
+        due = self.due_at()
+        return due is not None and due <= as_of
+
 
 @dataclass
-class Session:
+class SessionPlan:
+    """A composed learning session (produced by ``build_session``, LG-05).
+
+    Named ``SessionPlan`` to avoid colliding with the ``sessions`` ORM model and
+    SQLAlchemy's ``Session``; section 7 calls it ``Session`` illustratively.
+    """
+
     user_id: int
     minutes_available: int
     topic: str | None
@@ -52,43 +95,141 @@ class Session:
         return [*self.review_word_ids, *self.new_word_ids]
 
 
-def sm2_update(state: CardState, quality: int, *, now: dt.datetime) -> CardState:
-    """Apply one SM-2 review outcome. ``quality`` is 0-5.
+def _round_half_up(value: float) -> int:
+    return math.floor(value + 0.5)
 
-    TODO(step 2): full SM-2 recurrence + property tests.
+
+def _ease_after(ease_factor: float, quality: int) -> float:
+    delta = 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)
+    return max(MIN_EASE_FACTOR, ease_factor + delta)
+
+
+def sm2_update(state: CardState, quality: int) -> CardState:
+    """Apply one SM-2 review outcome (quality 0..5) and return the new state.
+
+    Pure: does not mutate ``state`` and does not touch ``last_reviewed`` (the
+    caller sets that from the log timestamp). The interval multiplier uses the
+    ease factor from *before* this review, per the reference algorithm.
     """
-    raise NotImplementedError("sm2_update lands in build-order step 2")
+    if not 0 <= quality <= 5:
+        raise ValueError(f"quality must be 0..5, got {quality}")
+
+    if quality < PASS_QUALITY_THRESHOLD:
+        repetitions, interval = 0, FIRST_INTERVAL_DAYS
+    elif state.repetitions == 0:
+        repetitions, interval = 1, FIRST_INTERVAL_DAYS
+    elif state.repetitions == 1:
+        repetitions, interval = 2, SECOND_INTERVAL_DAYS
+    else:
+        repetitions = state.repetitions + 1
+        interval = _round_half_up(state.interval_days * state.ease_factor)
+
+    return replace(
+        state,
+        repetitions=repetitions,
+        interval_days=interval,
+        ease_factor=_ease_after(state.ease_factor, quality),
+    )
 
 
-def words_due_for_review(user_id: int, as_of: dt.datetime) -> list[WordId]:
-    raise NotImplementedError("words_due_for_review lands in build-order step 2")
+def replay(logs: Iterable[ReviewLog]) -> CardState:
+    """Fold SM-2 over a card's review history. ``logs`` must be chronological."""
+    state = CardState()
+    for log in logs:
+        state = sm2_update(state, quality_from_response(log.correct, log.response_time_ms))
+        state.last_reviewed = log.timestamp
+    return state
+
+
+def get_card_state(session: DbSession, user_id: int, word_id: WordId) -> CardState:
+    logs = session.scalars(
+        select(ReviewLog)
+        .where(ReviewLog.user_id == user_id, ReviewLog.word_id == word_id)
+        .order_by(ReviewLog.timestamp, ReviewLog.id)
+    ).all()
+    return replay(logs)
+
+
+def words_due_for_review(session: DbSession, user_id: int, as_of: dt.datetime) -> list[WordId]:
+    """Word ids whose reconstructed due date is on or before ``as_of``.
+
+    Ordered by due date (most overdue first), then word id. New words (no review
+    history) are never "due" -- they are handled by ``select_new_words``.
+    """
+    logs = session.scalars(
+        select(ReviewLog)
+        .where(ReviewLog.user_id == user_id)
+        .order_by(ReviewLog.word_id, ReviewLog.timestamp, ReviewLog.id)
+    ).all()
+
+    by_word: dict[int, list[ReviewLog]] = {}
+    for log in logs:
+        by_word.setdefault(log.word_id, []).append(log)
+
+    due: list[tuple[dt.datetime, int]] = []
+    for word_id, word_logs in by_word.items():
+        state = replay(word_logs)
+        if state.is_due(as_of):
+            due.append((state.due_at(), word_id))
+
+    due.sort(key=lambda pair: (pair[0], pair[1]))
+    return [word_id for _due_at, word_id in due]
 
 
 def update_after_review(
-    user_id: int, word_id: WordId, correct: bool, response_time_ms: int
+    session: DbSession,
+    user_id: int,
+    word_id: WordId,
+    correct: bool,
+    response_time_ms: int,
+    *,
+    as_of: dt.datetime | None = None,
 ) -> None:
-    raise NotImplementedError("update_after_review lands in build-order step 2")
+    """Record one review outcome as a ``review_logs`` row.
 
-
-def select_new_words(user_id: int, topic: str | None, n: int) -> list[WordId]:
-    raise NotImplementedError("select_new_words lands in build-order step 2")
-
-
-def build_session(user_id: int, minutes_available: int, topic: str | None) -> Session:
-    """Compose a session: budget the time, then fill review + new slots.
-
-    The time-budget half (``plan_budget``) is already implemented and tested;
-    the word-selection half is stubbed until step 2.
+    State is derived from the logs, so there is nothing else to persist. The
+    row's ``source`` is ``new`` on the card's first ever review, else ``review``.
+    ``as_of`` defaults to now; the simulator and tests pass it explicitly for
+    determinism. The caller controls the transaction (this only flushes).
     """
-    raise NotImplementedError("build_session lands in build-order step 2; see plan_budget()")
+    seen_before = session.scalar(
+        select(ReviewLog.id)
+        .where(ReviewLog.user_id == user_id, ReviewLog.word_id == word_id)
+        .limit(1)
+    )
+    session.add(
+        ReviewLog(
+            user_id=user_id,
+            word_id=word_id,
+            timestamp=as_of or dt.datetime.now(dt.UTC),
+            correct=correct,
+            response_time_ms=max(0, response_time_ms),
+            source=ReviewSource.review if seen_before else ReviewSource.new,
+        )
+    )
+    session.flush()
+
+
+def select_new_words(session: DbSession, user_id: int, topic: str | None, n: int) -> list[WordId]:
+    raise NotImplementedError("select_new_words lands in build-order step 2 (LG-05)")
+
+
+def build_session(
+    session: DbSession, user_id: int, minutes_available: int, topic: str | None
+) -> SessionPlan:
+    """Compose a session: budget the time (``plan_budget``), then fill slots."""
+    raise NotImplementedError("build_session lands in build-order step 2 (LG-05)")
 
 
 __all__ = [
     "CardState",
-    "Session",
+    "SessionPlan",
     "WordId",
     "build_session",
+    "get_card_state",
     "plan_budget",
+    "quality_from_response",
+    "replay",
     "select_new_words",
     "sm2_update",
     "update_after_review",
