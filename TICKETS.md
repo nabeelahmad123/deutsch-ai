@@ -163,11 +163,29 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > **Build-order step 3 (MCP server #1) is complete.** Next: `LG-09`, the agent
 > orchestrator.
 
-### Day 9 — `LG-09` Agent orchestrator — intent + loop
-- [ ] `orchestrator.run_session` — parse intent (time budget, topic/target); the one NL step
-- [ ] Anthropic API tool-use loop bound to MCP server #1 tools
-- [ ] Every tool call + agent decision traced
-- **AC:** "I have 10 minutes, German for work" → correct tool sequence in the trace.
+### Day 9 — `LG-09` Agent orchestrator — intent + loop  `[x]`
+- [x] `agent/mcp_client.py` — `MCPToolClient`: Anthropic-shaped `tool_specs()` +
+      a sync, traced `call()` over an in-process `MCPServer` (principle #3, "even
+      in-process"). One seam to swap for a real transport or wrap for failure
+      injection; `MCPToolError` for tool errors.
+- [x] `agent/orchestrator.py` — `run_session(request, *, mcp_client, llm_client,
+      tracer)`: manual Anthropic tool-use loop. System prompt does the one NL
+      step (minutes + topic) and forbids picking/sorting/inventing words. Loops
+      through `create_learning_session`; `intent` = that call's args. `MAX_TURNS=8`
+      guard; `refusal` / `no_session` / `max_turns` handled; tool errors fed back
+      as `is_error` results, not raised.
+- [x] Tracing: an `agent_decision` per LLM turn + `agent.tool_call.*` per call +
+      the server's own `learning.tool.*` (shared tracer).
+- [x] `python -m backend.agent "..." --user-id N` CLI.
+- **AC met:** `test_orchestrator.py` drives the loop with a scripted `FakeLLM`
+  (no network) — "I have 10 minutes, German for work" → tool sequence
+  `[get_user_profile, create_learning_session]`, `intent {minutes 10, topic work}`,
+  session composed, trace shows it. Error-recovery / max-turns / refusal /
+  no-session covered. `test_orchestrator_live.py` is the real-API version
+  (skipped without a key). 459 pass + 1 skipped.
+- [x] CI split: a `core` job (minimal deps, `--cov-fail-under=90`, proves
+      `backend/core` import-purity via `test_import_purity.py`) and a `full` job
+      (`--extra agent`, whole suite).
 
 ### Day 10 — `LG-10` Agent — quiz + grade + update loop
 - [ ] Generate/return quiz content; grade answers via `evaluate_answer` as they arrive

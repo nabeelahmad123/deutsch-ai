@@ -5,26 +5,38 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # The deterministic core, with a minimal dependency set and no agent/LLM/MCP
+  # packages installed at all -- proves backend/core stays import-clean of them
+  # (CLAUDE.md non-negotiable principle #1).
+  core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-
-      - name: Install project (core + learner_model deps only, no agent/LLM)
+      - name: Install (no agent extras)
         run: uv sync --extra dev
+      - name: Lint + format
+        run: |
+          uv run ruff check backend
+          uv run black --check backend
+      - name: Test core / data / db
+        run: >
+          uv run pytest
+          backend/core/tests backend/data/tests backend/db/tests
+          backend/learner_model/tests
+          --cov=backend.core --cov-report=term --cov-fail-under=90
 
-      - name: Lint (ruff)
-        run: uv run ruff check backend
-
-      - name: Format check (black)
-        run: uv run black --check backend
-
-      # CLAUDE.md section 14: core + learner_model (no external services). The
-      # API tests run against in-memory SQLite, so they need no live Postgres.
-      - name: Test
+  # The full suite, including the MCP server and the agent orchestrator.
+  full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install (with agent + MCP)
+        run: uv sync --extra dev --extra agent
+      - name: Test everything
         run: uv run pytest

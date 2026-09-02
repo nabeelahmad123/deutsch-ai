@@ -70,6 +70,7 @@ testpaths = [
     "backend/db/tests",
     "backend/api/tests",
     "backend/mcp_servers/tests",
+    "backend/agent/tests",
 ]
 filterwarnings = [
     "error::DeprecationWarning",
