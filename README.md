@@ -25,25 +25,30 @@ see [`CLAUDE.md`](CLAUDE.md) for the full brief and [`docs/NON_GOALS.md`](docs/N
 ```bash
 cp .env.example .env            # fill in ANTHROPIC_API_KEY etc.
 uv sync --extra dev             # Python 3.12 project env
-uv run pytest                   # runs backend/core + backend/learner_model
+uv run pytest                   # core + learner_model + data + db + api
 
-# Data pipeline (build-order step 1) — starter set until the full list lands:
+# Data pipeline (build-order step 1). --sample needs no downloads; the real run
+# reads corpora from backend/data/raw/ (see backend/data/README.md):
 uv run python -m backend.data.ingest_frequency  --sample
 uv run python -m backend.data.ingest_wiktionary --sample
-uv run python -m backend.data.build_seed        # regenerates backend/data/seed.sql
+uv run python -m backend.data.build_seed        # regenerates backend/data/seed.sql (data only)
 
-# Full skeleton (Postgres real; other services are stubs for now):
+# Schema is Alembic; seeding is a separate idempotent step:
+uv run alembic upgrade head
+uv run python -m backend.db.seed --skip-migrate
+
+# Full skeleton (Postgres real + migrated + seeded; other services are stubs):
 docker compose up
 ```
 
 ## Build order
 
-Tracked in `CLAUDE.md` section 15. Current: **step 1 — data pipeline + Postgres
-schema + FastAPI CRUD.**
+Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Current: finishing **step 1**
+(live-Postgres smoke test pending Docker), next is **step 2 — scheduler**.
 
 | # | Step | State |
 |---|------|-------|
-| 1 | Data pipeline + schema + FastAPI CRUD | in progress |
+| 1 | Data pipeline + schema + FastAPI CRUD | done (bar live-PG smoke test) |
 | 2 | Deterministic scheduler, fully unit tested | scaffolded |
 | 3 | MCP server #1, tested standalone | scaffolded |
 | 4 | Agent + session flow (server #1) | scaffolded |

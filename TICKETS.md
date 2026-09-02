@@ -34,12 +34,29 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Deferred to `LG-03`:** loading `seed.sql` into live Postgres (Docker daemon
   not running in this env); `docker compose config` validates.
 
-### Day 3 — `LG-03` Schema migrations + topic tagging + CRUD hardening
-- [ ] Wire Alembic into `backend/db/migrations/`; initial migration matches `models.py`
-- [ ] `assign_cefr` applied across full list; add `topic` tagging (rule/keyword-based)
-- [ ] Regenerate `seed.sql` from full dataset; load into Postgres via compose
-- [ ] CRUD: pagination, filtering by cefr/topic, error cases; raise API test coverage
-- **AC:** `docker compose up` seeds ~4k words; `GET /words?cefr_level=A1&topic=…` works.
+### Day 3 — `LG-03` Schema migrations + topic tagging + CRUD hardening  `[x]`
+- [x] Alembic wired into `backend/db/migrations/` (`env.py`, `script.py.mako`,
+      `0001_initial`); `sa.Enum` so it runs on SQLite too. `alembic check` = no drift.
+- [x] `backend/db/seed.py`: `alembic upgrade head` + idempotent vocab load (from
+      `build/words.jsonl`, or replay the committed `seed.sql`); `build_seed.py` is
+      now DATA-only (schema owned by Alembic)
+- [x] `assign_topic.py` — approximate gloss-keyword topic tagger, 14 topics;
+      `seed.sql` regenerated: 3899 words, 378 topic-tagged, deterministic
+- [x] CRUD hardening: `GET /words` now a `{total,limit,offset,items}` envelope with
+      `cefr_level` / `topic` / `article` / `q` (lemma prefix) filters + validated
+      pagination; new `GET /topics`; `422` on bad enum/params; `404` on
+      review-logs for unknown user; `IntegrityError` handler
+- [x] `docker-compose`: dropped the Postgres init-mount; `backend` now runs
+      `alembic upgrade head && seed && uvicorn`. `Dockerfile` + `.dockerignore` fixed.
+- [x] Tests: `backend/db/tests/` (migration up/down/no-drift, seeder idempotency,
+      semicolon-safe SQL replay) + `test_assign_topic.py`; 53 pass, ruff/black clean
+- **AC (partial):** `GET /words?cefr_level=A1&topic=…` works (covered by tests);
+  migrate+seed verified end-to-end on SQLite. **`docker compose up` against live
+  Postgres still unrun** — Docker daemon down in this env; `docker compose config`
+  validates and the same commands passed on SQLite.
+
+> **Build-order step 1 (sections 4–6) is now complete** bar the live-Postgres
+> smoke test, which needs Docker running.
 
 ### Day 4 — `LG-04` SM-2 scheduler — state + updates
 - [ ] `CardState` reconstruction from `review_logs`; `sm2_update(state, quality)` recurrence

@@ -14,7 +14,6 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/data/seed.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-german} -d ${POSTGRES_DB:-german}"]
       interval: 5s
@@ -25,7 +24,12 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
+    # Migrate + seed (idempotent) on startup, then serve. Schema lives in
+    # backend/db/migrations/; seed.sql is data only.
+    command: >
+      sh -c "alembic upgrade head
+      && python -m backend.db.seed --skip-migrate
+      && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:-german}@postgres:5432/${POSTGRES_DB:-german}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

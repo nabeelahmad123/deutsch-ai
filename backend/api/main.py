@@ -9,20 +9,22 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy import select
+from fastapi import Depends, FastAPI, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.api.schemas import (
     ReviewLogIn,
     ReviewLogOut,
+    TopicCount,
     UserIn,
     UserOut,
     WordIn,
     WordOut,
+    WordPage,
 )
-from backend.db.models import ReviewLog, User, Word
+from backend.db.models import CEFRLevel, ReviewLog, User, Word
 from backend.db.session import get_session
 
 app = FastAPI(title="learn-german backend", version="0.1.0")
@@ -32,27 +34,60 @@ def db() -> Iterator[Session]:
     yield from get_session()
 
 
+@app.exception_handler(IntegrityError)
+def _integrity_error(_request, exc: IntegrityError):  # pragma: no cover - thin shim
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=409, content={"detail": "constraint violation"})
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 # --- words ---------------------------------------------------------------
-@app.get("/words", response_model=list[WordOut])
+@app.get("/words", response_model=WordPage)
 def list_words(
     session: Session = Depends(db),
-    cefr_level: str | None = None,
+    cefr_level: CEFRLevel | None = None,
     topic: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[Word]:
-    stmt = select(Word).order_by(Word.frequency_rank)
+    article: str | None = None,
+    q: str | None = Query(default=None, description="case-insensitive lemma prefix"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> WordPage:
+    filters = []
     if cefr_level:
-        stmt = stmt.where(Word.cefr_level == cefr_level)
+        filters.append(Word.cefr_level == cefr_level)
     if topic:
-        stmt = stmt.where(Word.topic == topic)
-    stmt = stmt.limit(min(limit, 500)).offset(offset)
-    return list(session.scalars(stmt))
+        filters.append(Word.topic == topic)
+    if article:
+        filters.append(Word.article == article)
+    if q:
+        filters.append(Word.lemma.ilike(f"{q}%"))
+
+    total = session.scalar(select(func.count()).select_from(Word).where(*filters)) or 0
+    rows = session.scalars(
+        select(Word).where(*filters).order_by(Word.frequency_rank).limit(limit).offset(offset)
+    )
+    return WordPage(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[WordOut.model_validate(w) for w in rows],
+    )
+
+
+@app.get("/topics", response_model=list[TopicCount])
+def list_topics(session: Session = Depends(db)) -> list[TopicCount]:
+    rows = session.execute(
+        select(Word.topic, func.count())
+        .where(Word.topic.is_not(None))
+        .group_by(Word.topic)
+        .order_by(func.count().desc())
+    )
+    return [TopicCount(topic=t, count=c) for t, c in rows]
 
 
 @app.get("/words/{word_id}", response_model=WordOut)
@@ -109,12 +144,16 @@ def create_review_log(payload: ReviewLogIn, session: Session = Depends(db)) -> R
 
 @app.get("/users/{user_id}/review-logs", response_model=list[ReviewLogOut])
 def list_review_logs(
-    user_id: int, session: Session = Depends(db), limit: int = 200
+    user_id: int,
+    session: Session = Depends(db),
+    limit: int = Query(default=200, ge=1, le=1000),
 ) -> list[ReviewLog]:
+    if session.get(User, user_id) is None:
+        raise HTTPException(404, "user not found")
     stmt = (
         select(ReviewLog)
         .where(ReviewLog.user_id == user_id)
-        .order_by(ReviewLog.timestamp.desc())
-        .limit(min(limit, 1000))
+        .order_by(ReviewLog.timestamp.desc(), ReviewLog.id.desc())
+        .limit(limit)
     )
     return list(session.scalars(stmt))

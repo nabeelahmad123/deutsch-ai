@@ -25,6 +25,20 @@ class WordOut(WordIn):
     id: int
 
 
+class WordPage(BaseModel):
+    """A page of words plus the total matching the filters (for a frontend)."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[WordOut]
+
+
+class TopicCount(BaseModel):
+    topic: str
+    count: int
+
+
 class UserIn(BaseModel):
     target: UserTarget = UserTarget.general
 

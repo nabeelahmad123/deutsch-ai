@@ -25,6 +25,11 @@ _engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None
 
 
+def resolve_url(url: str | None = None) -> str:
+    """The DB URL to use: explicit arg, else $DATABASE_URL, else DEFAULT_URL."""
+    return url or os.environ.get("DATABASE_URL") or DEFAULT_URL
+
+
 def _build_engine(url: str) -> Engine:
     kwargs: dict = {"future": True}
     if url.startswith("sqlite"):
@@ -44,8 +49,7 @@ def configure(url: str | None = None, *, force: bool = False) -> Engine:
         return _engine
     if _engine is not None:
         _engine.dispose()
-    resolved = url or os.environ.get("DATABASE_URL", DEFAULT_URL)
-    _engine = _build_engine(resolved)
+    _engine = _build_engine(resolve_url(url))
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
 

@@ -6,11 +6,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install deps first for layer caching.
-COPY pyproject.toml README.md ./
-RUN pip install --upgrade pip && pip install ".[agent]"
-
+COPY pyproject.toml README.md alembic.ini ./
 COPY backend ./backend
+RUN pip install --upgrade pip && pip install ".[agent]"
 
 EXPOSE 8000 8100 8101
 

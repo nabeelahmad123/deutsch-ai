@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+# Large derived/raw corpora -- the container seeds from the committed seed.sql
+backend/data/raw
+backend/data/build
+_traces
+_vault
+frontend/node_modules
+docs/_scratch
