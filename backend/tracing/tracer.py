@@ -4,8 +4,8 @@ CLAUDE.md non-negotiable principle #4: name, input, output, latency,
 success/failure -- logged from day one, not bolted on later. JSON lines to start
 (section 3); a Langfuse/OTel exporter can be added behind the same interface.
 
-Day-1 status: the JSONL sink and the ``trace_tool_call`` context manager are
-implemented; agent/MCP code will call into them as those layers land.
+MCP server #1 wraps every tool (and resource read) with ``trace_tool_call``
+(LG-08). The agent orchestrator adds its own decision traces in LG-09.
 """
 
 from __future__ import annotations
@@ -20,7 +20,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TRACE_PATH = Path(os.environ.get("TRACE_LOG_PATH", "./_traces/trace.jsonl"))
+DEFAULT_TRACE_PATH = "./_traces/trace.jsonl"
+
+
+def _resolve_path(path: Path | str | None) -> Path:
+    return Path(path or os.environ.get("TRACE_LOG_PATH") or DEFAULT_TRACE_PATH)
 
 
 @dataclass
@@ -37,11 +41,13 @@ class TraceEvent:
 
 
 class Tracer:
-    def __init__(self, path: Path | str = DEFAULT_TRACE_PATH) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, path: Path | str | None = None) -> None:
+        # Resolved at construction, not import (so tests can point TRACE_LOG_PATH
+        # somewhere harmless). The directory is created on first write.
+        self.path = _resolve_path(path)
 
     def emit(self, event: TraceEvent) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(asdict(event), ensure_ascii=False, default=str) + "\n")
 
@@ -79,8 +85,12 @@ class Tracer:
             )
 
 
-_default = Tracer()
+_default: Tracer | None = None
 
 
 def get_tracer() -> Tracer:
+    """Process-wide tracer, created lazily on first use."""
+    global _default
+    if _default is None:
+        _default = Tracer()
     return _default

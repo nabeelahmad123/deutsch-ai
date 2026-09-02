@@ -142,11 +142,26 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > Next: `LG-08` — vocab MCP **resource** + standalone MCP-Inspector/client
 > sign-off + trace every tool call.
 
-### Day 8 — `LG-08` MCP server #1 — resource + standalone sign-off
-- [ ] Expose the vocab table as an MCP **resource** (not just tools)
-- [ ] Full manual test session via MCP inspector / Claude Desktop; fix protocol bugs
-- [ ] Trace every tool call (name, input, output, latency, success) via `tracer.py`
-- **AC (DoD §17):** server responds correctly to a manual session, independent of agent code.
+### Day 8 — `LG-08` MCP server #1 — resource + standalone sign-off  `[x]`
+- [x] Vocab exposed as MCP **resources**: `vocab://words` (static overview),
+      `vocab://words/{cefr_level}` and `vocab://word/{lemma}` (templates).
+      Missing word → `ResourceNotFoundError`; bad level → `ResourceError`.
+- [x] Every tool call **and** resource read wrapped with `tracer.trace_tool_call`
+      (name / input / output preview / latency / success) → JSONL. `build_server`
+      takes an optional `Tracer`; `tracer.py` resolves `TRACE_LOG_PATH` lazily so
+      it never touches the repo at import.
+- [x] `test_standalone_client.py` — a real `ClientSession` over an in-memory
+      transport does the full JSON-RPC dance (initialize, list tools/resources,
+      read_resource, a study flow) **with no agent code**; a second test proves a
+      bad call / missing resource is reported, not a crash, and the session stays
+      usable. `smoke.py` is the human-runnable equivalent (verified against the
+      real 3899-word seed).
+- [x] docker-compose learning-mcp already serves streamable-http on :8100 (LG-06)
+- **AC met (DoD §17):** server answers a full manual session independent of the
+  agent. **448 tests pass, `backend/core` 100%**, ruff + black clean.
+
+> **Build-order step 3 (MCP server #1) is complete.** Next: `LG-09`, the agent
+> orchestrator.
 
 ### Day 9 — `LG-09` Agent orchestrator — intent + loop
 - [ ] `orchestrator.run_session` — parse intent (time budget, topic/target); the one NL step

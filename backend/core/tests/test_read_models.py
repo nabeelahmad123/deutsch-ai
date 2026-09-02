@@ -93,6 +93,26 @@ def test_pick_distractors_unknown_word(session):
     assert read_models.pick_distractors(session, 999) == []
 
 
+def test_vocab_overview(session):
+    ov = read_models.vocab_overview(session)
+    assert ov["total"] == 40
+    assert ov["by_cefr_level"] == {"A1": 10, "A2": 10, "B1": 10, "B2": 10}
+    assert ov["by_topic"]["food"] == 3
+    assert "vocab://word/{lemma}" in ov["resource_templates"]
+
+
+def test_words_by_cefr_is_frequency_ordered_and_validates(session):
+    a2 = read_models.words_by_cefr(session, "a2")  # case-insensitive
+    assert [w.id for w in a2] == list(range(11, 21))
+    with pytest.raises(ValueError):
+        read_models.words_by_cefr(session, "C1")
+
+
+def test_word_by_lemma_case_insensitive(session):
+    assert read_models.word_by_lemma(session, "WORT7").id == 7
+    assert read_models.word_by_lemma(session, "nope") is None
+
+
 def test_session_view_hydrates_plan(session):
     update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
     plan = create_learning_session(session, 1, 10, None, as_of=T0 + 5 * DAY)

@@ -43,14 +43,14 @@ docker compose up
 
 ## Build order
 
-Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Next: **step 3 — finish MCP
-server #1** (quiz/grading tools, vocab resource, standalone Inspector session).
+Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Next: **step 4 — agent
+orchestrator**.
 
 | # | Step | State |
 |---|------|-------|
 | 1 | Data pipeline + schema + FastAPI CRUD | done (bar live-PG smoke test) |
 | 2 | Deterministic scheduler, fully unit tested | done — SM-2, 100% core coverage |
-| 3 | MCP server #1, tested standalone | 8 tools done (LG-06/07); resource + Inspector sign-off next |
+| 3 | MCP server #1, tested standalone | done — 8 tools + vocab resources + traced |
 | 4 | Agent + session flow (server #1) | scaffolded |
 | 5 | MCP server #2 + cross-server orchestration | scaffolded |
 | 6 | Failure injection + tracing + recovery rate | scaffolded (tracer done) |

@@ -14,6 +14,12 @@ from backend.db.session import configure, create_all, session_scope
 T0 = dt.datetime(2026, 1, 1, 9, 0, 0, tzinfo=dt.UTC)
 
 
+@pytest.fixture(autouse=True)
+def _trace_to_tmp(tmp_path, monkeypatch):
+    """Keep tool-call traces out of the repo during tests."""
+    monkeypatch.setenv("TRACE_LOG_PATH", str(tmp_path / "trace.jsonl"))
+
+
 @pytest.fixture
 def seeded_db():
     configure("sqlite+pysqlite:///:memory:", force=True)

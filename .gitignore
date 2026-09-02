@@ -27,3 +27,7 @@ backend/data/build/
 
 # Eval outputs (plots are committed into docs/ deliberately; scratch is not)
 docs/_scratch/
+
+# Runtime output
+_traces/
+_vault/

@@ -123,6 +123,56 @@ def session_view(session: DbSession, plan: SessionPlan) -> SessionView:
     )
 
 
+# --- vocab resource projections (LG-08) --------------------------------------
+
+_CEFR_LEVELS = ("A1", "A2", "B1", "B2")
+VOCAB_RESOURCE_TEMPLATES = ("vocab://words/{cefr_level}", "vocab://word/{lemma}")
+
+
+def vocab_overview(session: DbSession) -> dict:
+    """Shape of the vocab table: totals, breakdowns, and how to read slices."""
+    total = session.scalar(select(func.count()).select_from(Word)) or 0
+    by_cefr = {
+        str(level): count
+        for level, count in session.execute(
+            select(Word.cefr_level, func.count()).group_by(Word.cefr_level)
+        )
+    }
+    by_topic = {
+        topic: count
+        for topic, count in session.execute(
+            select(Word.topic, func.count())
+            .where(Word.topic.is_not(None))
+            .group_by(Word.topic)
+            .order_by(func.count().desc())
+        )
+    }
+    return {
+        "total": total,
+        "by_cefr_level": {lvl: by_cefr.get(lvl, 0) for lvl in _CEFR_LEVELS},
+        "by_topic": by_topic,
+        "resource_templates": list(VOCAB_RESOURCE_TEMPLATES),
+        "note": "CEFR level is approximated from frequency band (CLAUDE.md section 6).",
+    }
+
+
+def words_by_cefr(session: DbSession, cefr_level: str) -> list[WordView]:
+    level = cefr_level.strip().upper()
+    if level not in _CEFR_LEVELS:
+        raise ValueError(f"cefr_level must be one of {_CEFR_LEVELS}, got {cefr_level!r}")
+    ids = session.scalars(
+        select(Word.id).where(Word.cefr_level == level).order_by(Word.frequency_rank)
+    ).all()
+    return load_word_views(session, list(ids))
+
+
+def word_by_lemma(session: DbSession, lemma: str) -> WordView | None:
+    word = session.scalar(select(Word).where(func.lower(Word.lemma) == lemma.strip().lower()))
+    if word is None:
+        return None
+    return load_word_views(session, [word.id])[0]
+
+
 def card_state_view(session: DbSession, user_id: int, word_id: int) -> CardStateView:
     state = get_card_state(session, user_id, word_id)
     due = state.due_at()

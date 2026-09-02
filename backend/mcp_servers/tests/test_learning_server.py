@@ -5,11 +5,13 @@ Inspector session is LG-08.
 """
 
 import asyncio
+import json
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from backend.mcp_servers.learning_server.server import MAX_LIMIT, build_server
+from backend.tracing.tracer import Tracer
 
 
 def _call(name: str, args: dict):
@@ -149,3 +151,42 @@ def test_update_learning_state_records_and_returns_new_state(seeded_db):
 def test_update_learning_state_unknown_word(seeded_db):
     with pytest.raises(ToolError):
         _call("update_learning_state", {"user_id": 1, "word_id": 9999, "correct": True})
+
+
+# --- LG-08: tracing + vocab resource ---------------------------------------
+
+
+def test_every_tool_call_is_traced(seeded_db, tmp_path):
+    trace_path = tmp_path / "t.jsonl"
+    server = build_server(tracer=Tracer(trace_path))
+
+    asyncio.run(server.call_tool("get_user_profile", {"user_id": 1}))
+    with pytest.raises(ToolError):
+        asyncio.run(server.call_tool("get_user_profile", {"user_id": 999}))
+
+    events = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert [e["name"] for e in events] == [
+        "learning.tool.get_user_profile",
+        "learning.tool.get_user_profile",
+    ]
+    ok, failed = events
+    assert ok["success"] is True and ok["output"] and ok["latency_ms"] >= 0
+    assert ok["input"] == {"user_id": 1}
+    assert failed["success"] is False and failed["error"]
+
+
+def test_vocab_resources(seeded_db):
+    server = build_server()
+
+    index = asyncio.run(server.read_resource("vocab://words"))
+    overview = json.loads(index[0].content)
+    assert overview["total"] == 30
+    assert overview["by_cefr_level"]["A1"] == 10
+    assert "vocab://word/{lemma}" in overview["resource_templates"]
+
+    a2 = asyncio.run(server.read_resource("vocab://words/a2"))  # case-insensitive
+    rows = json.loads(a2[0].content)
+    assert len(rows) == 10 and all(w["cefr_level"] == "A2" for w in rows)
+
+    one = json.loads(asyncio.run(server.read_resource("vocab://word/WORT7"))[0].content)
+    assert one["lemma"] == "wort7"
