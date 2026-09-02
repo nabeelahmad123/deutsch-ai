@@ -255,10 +255,26 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > **Build-order step 5 (MCP #2 + cross-server orchestration) is complete.**
 > Next: `LG-13`, failure injection.
 
-### Day 13 — `LG-13` Failure injection
-- [ ] `failure_injection.py`: timeout, malformed/unexpected MCP response, ambiguous request
-- [ ] `wrap_tool(tool, spec)` injects faults per probability/target
-- **AC:** each fault type reproducibly triggerable in a test.
+### Day 13 — `LG-13` Failure injection  `[x]`
+- [x] `failure_injection.py` — 3 fault kinds: `timeout` (raises a timeout
+      `MCPToolError` after a *capped* real delay — never hangs),
+      `malformed_response` (returns `MALFORMED_PAYLOAD` junk instead of the real
+      result), `ambiguous_request` (a request transformer — `ambiguate()` strips
+      minutes/topic; plus an `AMBIGUOUS_REQUESTS` bank).
+- [x] `wrap_tool(call_fn, specs, *, rng, on_inject)` — the primitive; and
+      `FaultInjectingClient(inner, specs, *, seed, tracer)` which wraps a
+      `MCPToolClient` / `MultiServerToolClient` behind the same interface, so the
+      orchestrator can't tell. `FaultSpec` has `target_tool`, `probability`,
+      `delay_seconds`, `max_fires`. Every injected fault → `.injected` record +
+      a `fault_injected` trace event.
+- **AC met:** `test_failure_injection.py` triggers each kind reproducibly
+      (deterministic per `seed`), scopes by `target_tool`, honours
+      `probability=0` / `max_fires`, bounds wall-time on a timeout, and an
+      integration test shows the orchestrator recovering from a one-shot
+      injected timeout. 503 pass + 2 skipped.
+
+> Next: `LG-14` — drive faults through real agent runs and report the
+> tool-call success / recovery rate.
 
 ### Day 14 — `LG-14` Recovery behavior + recovery-rate report
 - [ ] Verify agent response per fault: retry / fallback / clarify / graceful fail — never hang/crash
