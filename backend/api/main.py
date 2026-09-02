@@ -7,9 +7,11 @@ talks to MCP servers, not this API -- non-negotiable principle #3).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -28,6 +30,15 @@ from backend.db.models import CEFRLevel, ReviewLog, User, Word
 from backend.db.session import get_session
 
 app = FastAPI(title="learn-german backend", version="0.1.0")
+
+# The minimal frontend (a static page) calls this API from the browser. Origins
+# are configurable; default is permissive for local dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("CORS_ALLOW_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def db() -> Iterator[Session]:
