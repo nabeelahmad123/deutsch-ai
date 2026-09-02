@@ -23,10 +23,21 @@ from dataclasses import dataclass, field, replace
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from backend.core.session_budget import plan_budget
-from backend.db.models import ReviewLog, ReviewSource
+from backend.core.session_budget import MAX_NEW_WORDS_PER_SESSION, plan_budget
+from backend.db.models import CEFRLevel, ReviewLog, ReviewSource, Word
 
 WordId = int
+
+# CEFR bands, easiest first. A user's "ceiling" for new words is one band above
+# the hardest band they have ever answered correctly (default A1, capped B2) --
+# a deterministic heuristic, in the same approximate spirit as the frequency ->
+# CEFR mapping (CLAUDE.md section 6).
+_CEFR_ORDER: tuple[CEFRLevel, ...] = (
+    CEFRLevel.A1,
+    CEFRLevel.A2,
+    CEFRLevel.B1,
+    CEFRLevel.B2,
+)
 
 # --- SM-2 constants (Wozniak, SuperMemo 2) --------------------------------
 MIN_EASE_FACTOR = 1.3
@@ -210,15 +221,69 @@ def update_after_review(
     session.flush()
 
 
+def cefr_ceiling(session: DbSession, user_id: int) -> CEFRLevel:
+    """Highest CEFR band the user may see as *new* words.
+
+    One band above the hardest band they have answered correctly, capped at B2;
+    A1 for a user with no correct reviews yet.
+    """
+    passed = session.scalars(
+        select(Word.cefr_level)
+        .join(ReviewLog, ReviewLog.word_id == Word.id)
+        .where(ReviewLog.user_id == user_id, ReviewLog.correct.is_(True))
+        .distinct()
+    ).all()
+    if not passed:
+        return CEFRLevel.A1
+    hardest = max(_CEFR_ORDER.index(level) for level in passed)
+    return _CEFR_ORDER[min(hardest + 1, len(_CEFR_ORDER) - 1)]
+
+
 def select_new_words(session: DbSession, user_id: int, topic: str | None, n: int) -> list[WordId]:
-    raise NotImplementedError("select_new_words lands in build-order step 2 (LG-05)")
+    """The ``n`` most frequent words the user has never seen, within their CEFR
+    ceiling, optionally restricted to ``topic``. Frequency-ordered, deterministic.
+    """
+    if n <= 0:
+        return []
+    allowed = _CEFR_ORDER[: _CEFR_ORDER.index(cefr_ceiling(session, user_id)) + 1]
+    seen = select(ReviewLog.word_id).where(ReviewLog.user_id == user_id)
+    stmt = select(Word.id).where(Word.cefr_level.in_(allowed), Word.id.not_in(seen))
+    if topic is not None:
+        stmt = stmt.where(Word.topic == topic)
+    stmt = stmt.order_by(Word.frequency_rank, Word.id).limit(n)
+    return list(session.scalars(stmt))
 
 
 def build_session(
-    session: DbSession, user_id: int, minutes_available: int, topic: str | None
+    session: DbSession,
+    user_id: int,
+    minutes_available: int,
+    topic: str | None,
+    *,
+    as_of: dt.datetime | None = None,
 ) -> SessionPlan:
-    """Compose a session: budget the time (``plan_budget``), then fill slots."""
-    raise NotImplementedError("build_session lands in build-order step 2 (LG-05)")
+    """Compose a session: time-budget the minutes (``plan_budget``), then fill
+    the review slots from due words and the new slots from ``select_new_words``.
+
+    Review and new lists are disjoint by construction (a "new" word has no review
+    history). Deterministic for a fixed ``as_of``.
+    """
+    as_of = as_of or dt.datetime.now(dt.UTC)
+    due = words_due_for_review(session, user_id, as_of)
+    new_candidates = select_new_words(session, user_id, topic, MAX_NEW_WORDS_PER_SESSION)
+
+    budget = plan_budget(
+        minutes_available,
+        due_review_count=len(due),
+        available_new_count=len(new_candidates),
+    )
+    return SessionPlan(
+        user_id=user_id,
+        minutes_available=minutes_available,
+        topic=topic,
+        review_word_ids=due[: budget.review_slots],
+        new_word_ids=new_candidates[: budget.new_slots],
+    )
 
 
 __all__ = [
@@ -226,6 +291,7 @@ __all__ = [
     "SessionPlan",
     "WordId",
     "build_session",
+    "cefr_ceiling",
     "get_card_state",
     "plan_budget",
     "quality_from_response",

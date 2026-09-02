@@ -50,3 +50,12 @@ def test_leftover_review_time_reclaimed_for_new_words():
     b = plan_budget(20, due_review_count=2, available_new_count=50)
     assert b.review_slots == 2
     assert b.new_slots == MAX_NEW_WORDS_PER_SESSION
+
+
+def test_leftover_new_word_time_reclaimed_for_reviews():
+    # Plenty due, almost no new words available -> spare time goes to reviews.
+    b = plan_budget(10, due_review_count=100, available_new_count=1)
+    assert b.new_slots == 1
+    assert b.review_slots > int((10 * 60 * 0.6) // SECONDS_PER_REVIEW)  # past the 60% share
+    spent = b.review_slots * SECONDS_PER_REVIEW + b.new_slots * SECONDS_PER_NEW_WORD
+    assert spent <= 10 * 60

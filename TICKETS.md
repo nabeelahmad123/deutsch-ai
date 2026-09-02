@@ -75,11 +75,22 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
   `test_scheduler_db.py` (SQLite fixture, no network). 78 tests pass; **core
   coverage 97%**. `select_new_words` / `build_session` still stubbed → LG-05.
 
-### Day 5 — `LG-05` SM-2 scheduler — selection + session + coverage
-- [ ] `select_new_words(user_id, topic, n)` (frequency-ordered, unseen, CEFR-gated)
-- [ ] `build_session(...)` = `plan_budget` + fill review/new slots
-- [ ] Property tests (monotonic intervals, EF floor 1.3, no dup words in a session)
-- **AC (DoD §17):** `backend/core` >90% coverage, zero LLM/network imports.
+### Day 5 — `LG-05` SM-2 scheduler — selection + session + coverage  `[x]`
+- [x] `cefr_ceiling(session, user_id)` — one band above the hardest band answered
+      correctly (default A1, capped B2); a deterministic heuristic
+- [x] `select_new_words(session, user_id, topic, n)` — unseen words within the
+      ceiling, frequency-ordered, optional topic filter
+- [x] `build_session(session, user_id, minutes, topic, *, as_of=None)` —
+      `plan_budget` over due + available-new counts, then fill the slots;
+      review/new lists disjoint by construction
+- [x] Property tests: 300 seeded random grade sequences assert EF ≥ 1.3,
+      reps ≥ 0, interval ≥ 1, reset on q<3, successful reviews never shorten the
+      interval; monotonic-interval and reproducibility checks
+- **AC met (DoD §17): `backend/core` at 100% coverage, zero LLM/network
+  imports** (verified by AST scan). 392 tests pass.
+
+> **Build-order step 2 (deterministic scheduler) is complete.** Next: `LG-06`,
+> MCP server #1.
 
 ---
 
