@@ -355,10 +355,22 @@ def create_learning_session(
     return plan
 
 
+def finish_session(session: DbSession, session_id: int, words_covered: int) -> SessionRow:
+    """Record how many words a session ended up covering. Raises ``LookupError``
+    if the session id is unknown."""
+    row = session.get(SessionRow, session_id)
+    if row is None:
+        raise LookupError(f"no session with id {session_id}")
+    row.words_covered = max(0, words_covered)
+    session.flush()
+    return row
+
+
 __all__ = [
     "CardState",
     "SessionPlan",
     "WordId",
+    "finish_session",
     "build_session",
     "cefr_ceiling",
     "create_learning_session",

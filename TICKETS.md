@@ -187,10 +187,28 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
       `backend/core` import-purity via `test_import_purity.py`) and a `full` job
       (`--extra agent`, whole suite).
 
-### Day 10 — `LG-10` Agent — quiz + grade + update loop
-- [ ] Generate/return quiz content; grade answers via `evaluate_answer` as they arrive
-- [ ] `update_learning_state` after each answer; session summary at the end
-- **AC (DoD §17):** one NL request → correctly-composed session, full trace logs.
+### Day 10 — `LG-10` Agent — quiz + grade + update loop  `[x]`
+- [x] System prompt extended: after `create_learning_session` the agent calls
+      `create_quiz` once with the session's word ids. `SessionResult.quiz` carries
+      the questions.
+- [x] `grade_answer(mcp, *, user_id, question_id, user_answer)` — a fixed
+      `evaluate_answer` → `update_learning_state` sequence, **no LLM turn** (the
+      semantic grading lives inside the tool). Returns `AnswerFeedback`
+      (correct/score/rationale/expected/method + the new `CardStateView`).
+- [x] `LearningSession` (from `start_session`) — `.answer(qid, text)` per answer,
+      `.summary()` → `{answered, correct, accuracy, ...}` and calls the new
+      `finish_learning_session` MCP tool, which writes `sessions.words_covered`
+      (scheduler `finish_session` + `read_models.summarise_session` +
+      `SessionSummary`).
+- [x] `python -m backend.agent "<req>" --auto` walks the whole flow.
+- **AC met (DoD §17):** one NL request → composed session + quiz, each answer
+  graded and applied, session summarised — all in the trace
+  (`agent.turn` ×N, then `agent.tool_call.{evaluate_answer,update_learning_state}`
+  per answer). `test_session_flow.py` + `test_orchestrator.py` drive it with a
+  scripted LLM (fuzzy grading, no key). 465 pass + 1 skipped, `backend/core` 100%.
+
+> **Build-order step 4 (agent + session flow) is complete.** Next: `LG-11`,
+> MCP server #2.
 
 ---
 

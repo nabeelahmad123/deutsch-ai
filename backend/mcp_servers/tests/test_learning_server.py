@@ -27,6 +27,7 @@ def test_tool_manifest():
         "get_weak_words",
         "get_new_words",
         "create_learning_session",
+        "finish_learning_session",
         "create_quiz",
         "evaluate_answer",
         "update_learning_state",
@@ -95,6 +96,21 @@ def test_create_learning_session_persists_and_hydrates(seeded_db):
 def test_create_learning_session_unknown_user(seeded_db):
     with pytest.raises(ToolError):
         _call("create_learning_session", {"user_id": 77, "minutes_available": 10})
+
+
+def test_finish_learning_session_records_words_covered(seeded_db):
+    sv = _call("create_learning_session", {"user_id": 1, "minutes_available": 10})
+    sid = sv.structured_content["session_id"]
+
+    summary = _call(
+        "finish_learning_session", {"session_id": sid, "words_covered": 4}
+    ).structured_content
+    assert summary["session_id"] == sid
+    assert summary["words_covered"] == 4
+    assert summary["user_id"] == 1
+
+    with pytest.raises(ToolError):
+        _call("finish_learning_session", {"session_id": 9999, "words_covered": 1})
 
 
 def test_quiz_roundtrip_en_to_de(seeded_db):

@@ -142,6 +142,16 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
                 raise ToolError(str(exc)) from exc
             return read_models.session_view(session, plan)
 
+    @server.tool()
+    @tool
+    def finish_learning_session(session_id: int, words_covered: int) -> read_models.SessionSummary:
+        """Close out a session, recording how many words it covered."""
+        with session_scope() as session:
+            try:
+                return read_models.summarise_session(session, session_id, words_covered)
+            except LookupError as exc:
+                raise ToolError(str(exc)) from exc
+
     # --- quiz + grading + state -----------------------------------------
     @server.tool()
     @tool

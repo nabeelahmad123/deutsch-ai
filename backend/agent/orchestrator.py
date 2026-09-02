@@ -8,8 +8,11 @@ intervals itself (non-negotiable principle #2).
 Every LLM turn is traced as an ``agent_decision`` and every tool call is traced
 by ``MCPToolClient`` (principle #4).
 
-LG-09 covers intent + the loop through ``create_learning_session``. Quiz
-generation and answer grading (steps 4-5 of section 9) land in LG-10.
+``run_session`` runs the LLM loop: parse intent -> compose the session -> build
+the quiz. Answers then come in one at a time through ``LearningSession.answer``
+(a fixed evaluate_answer -> update_learning_state sequence -- no LLM turn), and
+``LearningSession.summary`` closes the session out. ``start_session`` wires the
+two together.
 """
 
 from __future__ import annotations
@@ -39,10 +42,16 @@ You plan a single German vocabulary study session for learner user_id={user_id}.
 3. Call create_learning_session exactly once, passing the minutes and topic you
    inferred. The deterministic scheduler decides which words -- never choose,
    reorder, or invent vocabulary yourself, and never compute review dates.
+4. Then call create_quiz once, passing every word id from the session (review
+   words then new words) and a quiz_type ("en_to_de" unless the request implies
+   another). Do NOT call evaluate_answer or update_learning_state -- answers are
+   graded outside this loop.
 
-When create_learning_session has returned, briefly tell the learner what the
-session contains and stop. Do not call quiz or grading tools yet.
+After create_quiz returns, tell the learner in one sentence what the session
+holds, and stop.
 """
+QUIZ_TYPES = ("en_to_de", "de_to_en", "multiple_choice", "article")
+DEFAULT_QUIZ_TYPE = "en_to_de"
 
 
 @dataclass
@@ -58,9 +67,22 @@ class SessionResult:
     session_id: int | None = None
     review_words: list[dict] = field(default_factory=list)
     new_words: list[dict] = field(default_factory=list)
+    quiz: list[dict] = field(default_factory=list)  # QuizQuestion dicts
     tool_calls: list[str] = field(default_factory=list)
     turns: int = 0
     reply: str = ""
+
+
+@dataclass
+class AnswerFeedback:
+    question_id: str
+    word_id: int
+    correct: bool
+    score: float
+    rationale: str
+    expected: str
+    method: str
+    new_state: dict = field(default_factory=dict)  # CardStateView after the update
 
 
 def _anthropic_client():
@@ -151,6 +173,8 @@ def run_session(
                         "minutes_available": (block.input or {}).get("minutes_available"),
                         "topic": (block.input or {}).get("topic"),
                     }
+                elif block.name == "create_quiz" and isinstance(payload, list):
+                    result.quiz = payload
                 tool_results.append(
                     {
                         "type": "tool_result",
@@ -175,3 +199,87 @@ def run_session(
         result.new_words = session_payload.get("new_words", [])
 
     return result
+
+
+def grade_answer(
+    mcp: MCPToolClient, *, user_id: int, question_id: str, user_answer: str
+) -> AnswerFeedback:
+    """Grade one answer and apply it: evaluate_answer then update_learning_state.
+
+    No LLM turn -- the semantic grading (if any) happens inside evaluate_answer.
+    Both tool calls are traced by ``mcp``.
+    """
+    ev = mcp.call("evaluate_answer", {"question_id": question_id, "user_answer": user_answer})
+    state = mcp.call(
+        "update_learning_state",
+        {"user_id": user_id, "word_id": ev["word_id"], "correct": ev["correct"]},
+    )
+    return AnswerFeedback(
+        question_id=ev["question_id"],
+        word_id=ev["word_id"],
+        correct=ev["correct"],
+        score=ev["score"],
+        rationale=ev["rationale"],
+        expected=ev["expected"],
+        method=ev["method"],
+        new_state=state if isinstance(state, dict) else {},
+    )
+
+
+@dataclass
+class LearningSession:
+    """A composed session you can answer question-by-question, then summarise."""
+
+    user_id: int
+    session_id: int | None
+    quiz: list[dict]
+    result: SessionResult
+    _mcp: MCPToolClient
+    feedback: list[AnswerFeedback] = field(default_factory=list)
+
+    def answer(self, question_id: str, user_answer: str) -> AnswerFeedback:
+        fb = grade_answer(
+            self._mcp, user_id=self.user_id, question_id=question_id, user_answer=user_answer
+        )
+        self.feedback.append(fb)
+        return fb
+
+    def summary(self) -> dict:
+        answered = len(self.feedback)
+        correct = sum(1 for f in self.feedback if f.correct)
+        closed = {}
+        if self.session_id is not None:
+            closed = self._mcp.call(
+                "finish_learning_session",
+                {"session_id": self.session_id, "words_covered": answered},
+            )
+        return {
+            "session_id": self.session_id,
+            "answered": answered,
+            "correct": correct,
+            "accuracy": round(correct / answered, 3) if answered else None,
+            "topic": self.result.intent.get("topic"),
+            "minutes_available": self.result.intent.get("minutes_available"),
+            "session_row": closed,
+        }
+
+
+def start_session(
+    request: SessionRequest,
+    *,
+    mcp_client: MCPToolClient | None = None,
+    llm_client=None,
+    tracer: Tracer | None = None,
+    model: str | None = None,
+) -> LearningSession:
+    """Run the planning loop and hand back an answerable session."""
+    tracer = tracer or get_tracer()
+    mcp = mcp_client or MCPToolClient(tracer=tracer)
+    result = run_session(request, mcp_client=mcp, llm_client=llm_client, tracer=tracer, model=model)
+    return LearningSession(
+        user_id=request.user_id,
+        session_id=result.session_id,
+        quiz=result.quiz,
+        result=result,
+        _mcp=mcp,
+    )

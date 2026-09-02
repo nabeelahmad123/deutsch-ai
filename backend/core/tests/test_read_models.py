@@ -113,6 +113,20 @@ def test_word_by_lemma_case_insensitive(session):
     assert read_models.word_by_lemma(session, "nope") is None
 
 
+def test_summarise_session_records_and_projects(session):
+    plan = create_learning_session(session, 1, 10, "food", as_of=T0)
+    summary = read_models.summarise_session(session, plan.session_id, words_covered=6)
+    assert summary.session_id == plan.session_id
+    assert summary.words_covered == 6
+    assert summary.topic == "food"
+    assert summary.minutes_requested == 10
+
+
+def test_summarise_session_unknown_id(session):
+    with pytest.raises(LookupError):
+        read_models.summarise_session(session, 424242, words_covered=1)
+
+
 def test_session_view_hydrates_plan(session):
     update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
     plan = create_learning_session(session, 1, 10, None, as_of=T0 + 5 * DAY)

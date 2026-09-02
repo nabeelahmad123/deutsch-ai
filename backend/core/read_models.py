@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session as DbSession
 from backend.core.scheduler import (
     SessionPlan,
     cefr_ceiling,
+    finish_session,
     get_card_state,
     words_due_for_review,
 )
@@ -69,6 +70,15 @@ class SessionView:
     new_words: list[WordView]
 
 
+@dataclass(frozen=True)
+class SessionSummary:
+    session_id: int
+    user_id: int
+    topic: str | None
+    minutes_requested: int
+    words_covered: int
+
+
 def _iso(value: dt.datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -120,6 +130,17 @@ def session_view(session: DbSession, plan: SessionPlan) -> SessionView:
         topic=plan.topic,
         review_words=load_word_views(session, plan.review_word_ids),
         new_words=load_word_views(session, plan.new_word_ids),
+    )
+
+
+def summarise_session(session: DbSession, session_id: int, words_covered: int) -> SessionSummary:
+    row = finish_session(session, session_id, words_covered)
+    return SessionSummary(
+        session_id=row.id,
+        user_id=row.user_id,
+        topic=row.topic,
+        minutes_requested=row.duration_minutes_requested,
+        words_covered=row.words_covered,
     )
 
 

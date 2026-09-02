@@ -24,38 +24,52 @@ def _run(script, tmp_path, user_id=1, text="I have 10 minutes, German for work")
     return result, events
 
 
-def test_composes_session_from_natural_language(seeded_db, tmp_path):
-    script = [
+def _compose_script(minutes=10, topic="work"):
+    """A model that checks the profile, composes a session, then builds the quiz.
+    The create_quiz turn passes placeholder ids; the orchestrator forwards
+    whatever ids the model gives -- the real ids come back in result.session."""
+    return [
         response(
-            text_block("The learner has 10 minutes, topic work. Let me check where they stand."),
+            text_block(f"{minutes} minutes, topic {topic}. Checking the learner."),
             tool_use("get_user_profile", {"user_id": 1}),
         ),
         response(
-            text_block("Composing the session."),
             tool_use(
-                "create_learning_session", {"user_id": 1, "minutes_available": 10, "topic": "work"}
+                "create_learning_session",
+                {"user_id": 1, "minutes_available": minutes, "topic": topic},
             ),
         ),
-        response(text_block("Here is your 10-minute work session."), stop_reason="end_turn"),
+        response(
+            tool_use("create_quiz", {"word_ids": [2, 4, 6], "quiz_type": "en_to_de"}),
+        ),
+        response(text_block("Here is your session."), stop_reason="end_turn"),
     ]
-    result, events = _run(script, tmp_path)
+
+
+def test_composes_session_and_quiz_from_natural_language(seeded_db, tmp_path):
+    result, events = _run(_compose_script(), tmp_path)
 
     assert result.stopped == "completed"
-    assert result.turns == 3
-    assert result.tool_calls == ["get_user_profile", "create_learning_session"]
+    assert result.turns == 4
+    assert result.tool_calls == [
+        "get_user_profile",
+        "create_learning_session",
+        "create_quiz",
+    ]
     assert result.intent == {"minutes_available": 10, "topic": "work"}
     assert result.session_id == 1
-    assert isinstance(result.review_words, list) and isinstance(result.new_words, list)
-    assert result.reply == "Here is your 10-minute work session."
+    assert len(result.quiz) == 3
+    assert {q["quiz_type"] for q in result.quiz} == {"en_to_de"}
+    assert all("question_id" in q for q in result.quiz)
+    assert result.reply == "Here is your session."
 
-    # trace: an agent_decision per turn, plus the tool calls in order
     decisions = [e for e in events if e["kind"] == "agent_decision"]
-    assert len(decisions) == 3
-    assert decisions[0]["output"]["tools_requested"] == ["get_user_profile"]
+    assert len(decisions) == 4
     agent_calls = [e["name"] for e in events if e["name"].startswith("agent.tool_call.")]
     assert agent_calls == [
         "agent.tool_call.get_user_profile",
         "agent.tool_call.create_learning_session",
+        "agent.tool_call.create_quiz",
     ]
 
 
