@@ -50,7 +50,7 @@ server #1** (quiz/grading tools, vocab resource, standalone Inspector session).
 |---|------|-------|
 | 1 | Data pipeline + schema + FastAPI CRUD | done (bar live-PG smoke test) |
 | 2 | Deterministic scheduler, fully unit tested | done — SM-2, 100% core coverage |
-| 3 | MCP server #1, tested standalone | read tools done (LG-06); LG-07/08 next |
+| 3 | MCP server #1, tested standalone | 8 tools done (LG-06/07); resource + Inspector sign-off next |
 | 4 | Agent + session flow (server #1) | scaffolded |
 | 5 | MCP server #2 + cross-server orchestration | scaffolded |
 | 6 | Failure injection + tracing + recovery rate | scaffolded (tracer done) |

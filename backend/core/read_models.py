@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
-from backend.core.scheduler import cefr_ceiling, get_card_state, words_due_for_review
+from backend.core.scheduler import (
+    SessionPlan,
+    cefr_ceiling,
+    get_card_state,
+    words_due_for_review,
+)
 from backend.db.models import ReviewLog, User, Word
 
 # Frozen dataclasses: the MCP layer publishes these directly as typed tool
@@ -54,6 +59,16 @@ class UserProfile:
     overall_accuracy: float | None
 
 
+@dataclass(frozen=True)
+class SessionView:
+    session_id: int | None
+    user_id: int
+    minutes_available: int
+    topic: str | None
+    review_words: list[WordView]
+    new_words: list[WordView]
+
+
 def _iso(value: dt.datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -80,6 +95,32 @@ def load_word_views(session: DbSession, word_ids: list[int]) -> list[WordView]:
                 )
             )
     return views
+
+
+def pick_distractors(session: DbSession, word_id: int, k: int = 3) -> list[str]:
+    """Plausible wrong translations for a multiple-choice question: other words
+    at the same CEFR level, nearest by frequency rank. Deterministic."""
+    word = session.get(Word, word_id)
+    if word is None:
+        return []
+    rows = session.scalars(
+        select(Word.translation_en)
+        .where(Word.cefr_level == word.cefr_level, Word.id != word_id)
+        .order_by(func.abs(Word.frequency_rank - word.frequency_rank), Word.id)
+        .limit(k)
+    ).all()
+    return list(rows)
+
+
+def session_view(session: DbSession, plan: SessionPlan) -> SessionView:
+    return SessionView(
+        session_id=plan.session_id,
+        user_id=plan.user_id,
+        minutes_available=plan.minutes_available,
+        topic=plan.topic,
+        review_words=load_word_views(session, plan.review_word_ids),
+        new_words=load_word_views(session, plan.new_word_ids),
+    )
 
 
 def card_state_view(session: DbSession, user_id: int, word_id: int) -> CardStateView:

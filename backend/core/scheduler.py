@@ -24,7 +24,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from backend.core.session_budget import MAX_NEW_WORDS_PER_SESSION, plan_budget
-from backend.db.models import CEFRLevel, ReviewLog, ReviewSource, Word
+from backend.db.models import CEFRLevel, ReviewLog, ReviewSource, User, Word
+from backend.db.models import Session as SessionRow
 
 WordId = int
 
@@ -100,6 +101,7 @@ class SessionPlan:
     topic: str | None
     review_word_ids: list[WordId] = field(default_factory=list)
     new_word_ids: list[WordId] = field(default_factory=list)
+    session_id: int | None = None  # set once persisted by create_learning_session
 
     @property
     def word_ids(self) -> list[WordId]:
@@ -237,7 +239,14 @@ def update_after_review(
     row's ``source`` is ``new`` on the card's first ever review, else ``review``.
     ``as_of`` defaults to now; the simulator and tests pass it explicitly for
     determinism. The caller controls the transaction (this only flushes).
+
+    Raises ``LookupError`` for an unknown user or word (SQLite does not enforce
+    the foreign keys, so guard explicitly).
     """
+    if session.get(User, user_id) is None:
+        raise LookupError(f"no user with id {user_id}")
+    if session.get(Word, word_id) is None:
+        raise LookupError(f"no word with id {word_id}")
     seen_before = session.scalar(
         select(ReviewLog.id)
         .where(ReviewLog.user_id == user_id, ReviewLog.word_id == word_id)
@@ -321,12 +330,38 @@ def build_session(
     )
 
 
+def create_learning_session(
+    session: DbSession,
+    user_id: int,
+    minutes_available: int,
+    topic: str | None,
+    *,
+    as_of: dt.datetime | None = None,
+) -> SessionPlan:
+    """``build_session`` plus a persisted ``sessions`` row; returns the plan with
+    ``session_id`` populated. Raises ``LookupError`` for an unknown user."""
+    if session.get(User, user_id) is None:
+        raise LookupError(f"no user with id {user_id}")
+    plan = build_session(session, user_id, minutes_available, topic, as_of=as_of)
+    row = SessionRow(
+        user_id=user_id,
+        duration_minutes_requested=minutes_available,
+        words_covered=0,
+        topic=topic,
+    )
+    session.add(row)
+    session.flush()
+    plan.session_id = row.id
+    return plan
+
+
 __all__ = [
     "CardState",
     "SessionPlan",
     "WordId",
     "build_session",
     "cefr_ceiling",
+    "create_learning_session",
     "get_card_state",
     "plan_budget",
     "quality_from_response",

@@ -2,6 +2,8 @@
 
 import datetime as dt
 
+import pytest
+
 from backend.core.scheduler import (
     get_card_state,
     update_after_review,
@@ -86,6 +88,13 @@ def test_update_after_review_appends_row_and_sets_source(session):
 def test_update_after_review_clamps_negative_latency(session):
     update_after_review(session, 1, 1, correct=True, response_time_ms=-10, as_of=T0)
     assert session.query(ReviewLog).filter_by(word_id=1).one().response_time_ms == 0
+
+
+def test_update_after_review_rejects_unknown_user_or_word(session):
+    with pytest.raises(LookupError):
+        update_after_review(session, 999, 1, correct=True, response_time_ms=500, as_of=T0)
+    with pytest.raises(LookupError):
+        update_after_review(session, 1, 999, correct=True, response_time_ms=500, as_of=T0)
 
 
 def test_update_after_review_is_deterministic(session):

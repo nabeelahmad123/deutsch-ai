@@ -2,14 +2,18 @@
 
 import datetime as dt
 
+import pytest
+
 from backend.core.scheduler import (
     build_session,
     cefr_ceiling,
+    create_learning_session,
     select_new_words,
     update_after_review,
 )
 from backend.core.session_budget import MAX_NEW_WORDS_PER_SESSION
 from backend.db.models import CEFRLevel, ReviewLog
+from backend.db.models import Session as SessionRow
 
 from .conftest import T0
 
@@ -77,6 +81,21 @@ def test_build_session_is_deterministic(session):
     a = build_session(session, 1, **kwargs)
     b = build_session(session, 1, **kwargs)
     assert a == b
+
+
+def test_create_learning_session_persists_a_row_with_session_id(session):
+    update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
+    plan = create_learning_session(session, 1, minutes_available=10, topic=None, as_of=T0 + 5 * DAY)
+    assert plan.session_id is not None
+    row = session.get(SessionRow, plan.session_id)
+    assert row.user_id == 1
+    assert row.duration_minutes_requested == 10
+    assert row.words_covered == 0
+
+
+def test_create_learning_session_unknown_user_raises(session):
+    with pytest.raises(LookupError):
+        create_learning_session(session, 999, minutes_available=10, topic=None, as_of=T0)
 
 
 def test_review_and_new_counts_never_exceed_supply(session):

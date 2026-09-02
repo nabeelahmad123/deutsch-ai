@@ -21,10 +21,13 @@ def seeded_db():
     with session_scope() as s:
         s.add(User(id=1, target="work"))
         for i in range(1, 31):
+            is_noun = i % 2 == 1  # odd ids are nouns (have an article)
             s.add(
                 Word(
                     id=i,
                     lemma=f"wort{i}",
+                    article="das" if is_noun else None,
+                    plural=f"wort{i}e" if is_noun else None,
                     translation_en=f"word {i}",
                     cefr_level=["A1", "A2", "B1"][(i - 1) // 10],
                     frequency_rank=i,

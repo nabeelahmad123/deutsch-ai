@@ -116,11 +116,31 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > Stack note: `mcp` resolved to 2.1 (FastMCP→MCPServer rename); API is otherwise
 > the same. Pinned `mcp>=2.1,<3`.
 
-### Day 7 — `LG-07` MCP server #1 — quiz + grading + state
-- [ ] `create_quiz(word_ids, quiz_type)`, `update_learning_state(user_id, word_id, correct)`
-- [ ] `evaluate_answer` — exact/fuzzy match path + LLM semantic grading path for free text
-- [ ] `create_learning_session(user_id, minutes_available, topic)` composes and returns a session
-- **AC:** quiz round-trip works; free-text grading returns a score + rationale.
+### Day 7 — `LG-07` MCP server #1 — quiz + grading + state  `[x]`
+- [x] `create_quiz(word_ids, quiz_type)` — `en_to_de` / `de_to_en` /
+      `multiple_choice` / `article`; non-nouns skipped for `article`; MC
+      distractors are same-CEFR nearest-frequency words, deterministically shuffled
+- [x] Stateless `question_id`: base64url(JSON of word id + type + reference +
+      prompt), decoded by `evaluate_answer` — no server-side question store
+- [x] `evaluate_answer` — exact / fuzzy (`difflib` ratio + edit-distance rescue
+      for short words) for constrained types; **Anthropic API** semantic grading
+      for `de_to_en`, degrading to fuzzy (method `semantic_fallback_fuzzy`) when
+      no credentials / API error. Returns correct + score + rationale + expected.
+- [x] `create_learning_session` — `scheduler.create_learning_session` (new):
+      `build_session` + a persisted `sessions` row; tool returns a hydrated
+      `SessionView`
+- [x] `update_learning_state` — wraps `scheduler.update_after_review`, returns the
+      word's new `CardStateView`. `update_after_review` now raises `LookupError`
+      for unknown user/word (SQLite doesn't enforce the FKs)
+- [x] `.env.example` grader model default → `claude-opus-5` (per the claude-api
+      skill; sonnet noted as a cheaper option), read from `ANTHROPIC_MODEL`
+- **AC met:** quiz round-trip + free-text grading covered by
+  `backend/mcp_servers/tests/` (`test_quiz`, `test_grading` incl. a fake LLM
+  client, `test_learning_server` end-to-end). 441 tests pass, core 100%. All 8
+  tools verified listed over a real MCP HTTP session.
+
+> Next: `LG-08` — vocab MCP **resource** + standalone MCP-Inspector/client
+> sign-off + trace every tool call.
 
 ### Day 8 — `LG-08` MCP server #1 — resource + standalone sign-off
 - [ ] Expose the vocab table as an MCP **resource** (not just tools)

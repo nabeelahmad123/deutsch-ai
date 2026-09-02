@@ -5,7 +5,11 @@ import datetime as dt
 import pytest
 
 from backend.core import read_models
-from backend.core.scheduler import update_after_review, weak_words
+from backend.core.scheduler import (
+    create_learning_session,
+    update_after_review,
+    weak_words,
+)
 from backend.db.models import ReviewLog
 
 from .conftest import T0
@@ -74,3 +78,27 @@ def test_weak_words_limit_zero(session):
     update_after_review(session, 1, 1, correct=False, response_time_ms=9000, as_of=T0)
     assert weak_words(session, 1, 0) == []
     assert session.query(ReviewLog).count() == 1
+
+
+def test_pick_distractors_same_level_nearest_frequency(session):
+    # fixture: 40 words, ranks 1..40, ten per band. word 5 is A1 (ranks 1..10).
+    distractors = read_models.pick_distractors(session, 5, k=3)
+    assert len(distractors) == 3
+    assert "word 5" not in distractors  # never the answer itself
+    # nearest ranks to 5 within A1: 4, 6, 3 (|Δ| 1,1,2), tie broken by id
+    assert distractors == ["word 4", "word 6", "word 3"]
+
+
+def test_pick_distractors_unknown_word(session):
+    assert read_models.pick_distractors(session, 999) == []
+
+
+def test_session_view_hydrates_plan(session):
+    update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
+    plan = create_learning_session(session, 1, 10, None, as_of=T0 + 5 * DAY)
+    view = read_models.session_view(session, plan)
+    assert view.session_id == plan.session_id
+    assert view.user_id == 1
+    assert [w.id for w in view.review_words] == plan.review_word_ids
+    assert [w.id for w in view.new_words] == plan.new_word_ids
+    assert all(isinstance(w.lemma, str) for w in view.review_words + view.new_words)

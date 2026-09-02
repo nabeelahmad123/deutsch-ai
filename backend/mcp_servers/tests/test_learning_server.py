@@ -24,10 +24,13 @@ def test_tool_manifest():
         "get_words_due_for_review",
         "get_weak_words",
         "get_new_words",
+        "create_learning_session",
+        "create_quiz",
+        "evaluate_answer",
+        "update_learning_state",
     }
     for t in tools:
         assert t.description
-        assert t.input_schema["properties"]["user_id"]["type"] == "integer"
         assert t.output_schema is not None
 
 
@@ -71,3 +74,78 @@ def test_limit_is_clamped(seeded_db):
     # count above MAX_LIMIT must not raise
     res = _call("get_new_words", {"user_id": 1, "count": MAX_LIMIT + 10_000})
     assert res.is_error is False
+
+
+# --- LG-07: session + quiz + grading + state ---------------------------------
+
+
+def test_create_learning_session_persists_and_hydrates(seeded_db):
+    sv = _call(
+        "create_learning_session", {"user_id": 1, "minutes_available": 15}
+    ).structured_content
+    assert sv["session_id"] == 1
+    assert sv["review_words"] and sv["review_words"][0]["lemma"]  # word 1 or 2 due
+    assert isinstance(sv["new_words"], list)
+    ids = {w["id"] for w in sv["review_words"] + sv["new_words"]}
+    assert len(ids) == len(sv["review_words"]) + len(sv["new_words"])  # no dupes
+
+
+def test_create_learning_session_unknown_user(seeded_db):
+    with pytest.raises(ToolError):
+        _call("create_learning_session", {"user_id": 77, "minutes_available": 10})
+
+
+def test_quiz_roundtrip_en_to_de(seeded_db):
+    quiz = _call("create_quiz", {"word_ids": [3, 4], "quiz_type": "en_to_de"})
+    questions = quiz.structured_content["result"]
+    assert len(questions) == 2
+    qid = questions[0]["question_id"]
+
+    ev = _call("evaluate_answer", {"question_id": qid, "user_answer": "wort3"}).structured_content
+    assert ev["correct"] is True
+    assert ev["method"] == "exact"
+    assert ev["word_id"] == 3
+    assert ev["expected"] == "wort3"
+
+    wrong = _call(
+        "evaluate_answer", {"question_id": qid, "user_answer": "totallywrong"}
+    ).structured_content
+    assert wrong["correct"] is False
+
+
+def test_quiz_article_skips_non_nouns(seeded_db):
+    # fixture: odd ids are nouns (article "das"), even ids are not
+    quiz = _call("create_quiz", {"word_ids": [1, 2, 3], "quiz_type": "article"})
+    questions = quiz.structured_content["result"]
+    assert [q["word_id"] for q in questions] == [1, 3]
+    assert questions[0]["options"] == ["der", "die", "das"]
+
+
+def test_evaluate_answer_de_to_en_falls_back_without_llm(seeded_db, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1")
+    quiz = _call("create_quiz", {"word_ids": [3], "quiz_type": "de_to_en"})
+    qid = quiz.structured_content["result"][0]["question_id"]
+    ev = _call("evaluate_answer", {"question_id": qid, "user_answer": "word 3"}).structured_content
+    assert ev["method"] == "semantic_fallback_fuzzy"
+    assert ev["correct"] is True
+
+
+def test_evaluate_answer_rejects_bad_question_id(seeded_db):
+    with pytest.raises(ToolError):
+        _call("evaluate_answer", {"question_id": "not-a-qid", "user_answer": "x"})
+
+
+def test_update_learning_state_records_and_returns_new_state(seeded_db):
+    state = _call(
+        "update_learning_state", {"user_id": 1, "word_id": 5, "correct": True}
+    ).structured_content
+    assert state["word_id"] == 5
+    assert state["repetitions"] == 1
+    assert state["interval_days"] == 1
+    assert state["due_at"] is not None
+
+
+def test_update_learning_state_unknown_word(seeded_db):
+    with pytest.raises(ToolError):
+        _call("update_learning_state", {"user_id": 1, "word_id": 9999, "correct": True})
