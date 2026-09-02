@@ -4,8 +4,11 @@
     DATABASE_URL=sqlite+pysqlite:///local.db \\
         python -m backend.agent "I have 10 minutes, German for work" --user-id 1
 
-Composes the session and quiz, then (with --auto) answers every question wrong
-to show the grade -> update_learning_state -> summary flow end to end.
+--auto answers every question wrong to show the grade -> update_learning_state ->
+summary flow. --converse runs the cross-server loop instead (learning + notes):
+
+    python -m backend.agent --converse \\
+        "Give me a 10-minute German work session and note where I'm at"
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from backend.agent.orchestrator import SessionRequest, start_session
+from backend.agent.orchestrator import SessionRequest, run_conversation, start_session
 
 
 def main() -> None:
@@ -23,7 +26,27 @@ def main() -> None:
     parser.add_argument(
         "--auto", action="store_true", help="auto-answer every question wrong, then summarise"
     )
+    parser.add_argument(
+        "--converse", action="store_true", help="cross-server loop (learning + notes)"
+    )
     args = parser.parse_args()
+
+    if args.converse:
+        conv = run_conversation(SessionRequest(raw_text=args.request, user_id=args.user_id))
+        print(
+            json.dumps(
+                {
+                    "stopped": conv.stopped,
+                    "turns": conv.turns,
+                    "servers_used": conv.servers_used,
+                    "tool_calls": conv.tool_calls,
+                    "reply": conv.reply,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
 
     session = start_session(SessionRequest(raw_text=args.request, user_id=args.user_id))
     result = session.result

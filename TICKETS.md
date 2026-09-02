@@ -232,10 +232,28 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
   error survives) — independent of the agent and of server #1.
   HTTP transport verified binding :8101. 486 pass + 1 skipped.
 
-### Day 12 — `LG-12` Cross-server orchestration
-- [ ] Agent wired to both MCP servers in one conversation
-- [ ] Flow: "set up daily 10-minute sessions this week and remind me Monday"
-- **AC (DoD §17):** one conversation uses both servers; trace shows reasoning between them.
+### Day 12 — `LG-12` Cross-server orchestration  `[x]`
+- [x] `MultiServerToolClient` (agent/mcp_client.py) — same `tool_specs()` /
+      `call()` interface as `MCPToolClient`, fronts N servers, routes by tool
+      name, `server_for(name)` → "learning" | "notes". `build_default_clients()`
+      = learning #1 + notes #2 on one shared tracer.
+- [x] `_run_loop` — the Anthropic tool-use loop factored out of `run_session`
+      (behaviour unchanged); `run_conversation(request)` reuses it with a broader
+      system prompt covering both toolsets and an `on_tool` hook that records
+      which server each call hit.
+- [x] `ConversationResult` carries `servers_used`. `python -m backend.agent
+      --converse "<req>"` runs it.
+- **AC met (DoD §17):** `test_cross_server.py` — "Set me up a 10-minute German
+  work session and note where I'm at" → `get_user_profile` +
+  `create_learning_session` (server #1), then `log_progress` (server #2);
+  `servers_used == ["learning","notes"]`; the trace interleaves `agent.turn`
+  with `learning.tool.*` and `notes.tool.*` and an `agent.turn` sits between the
+  two servers' calls; the note is actually written to `progress.md`.
+  Error-in-one-server and refusal covered. `test_cross_server_live.py` is the
+  real-API version. 490 pass + 2 skipped.
+
+> **Build-order step 5 (MCP #2 + cross-server orchestration) is complete.**
+> Next: `LG-13`, failure injection.
 
 ### Day 13 — `LG-13` Failure injection
 - [ ] `failure_injection.py`: timeout, malformed/unexpected MCP response, ambiguous request

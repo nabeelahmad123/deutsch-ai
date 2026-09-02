@@ -104,6 +104,96 @@ def _blocks_to_dicts(content: Any) -> list[dict]:
     return out
 
 
+@dataclass
+class LoopOutcome:
+    stopped: str  # "completed" | "max_turns" | "refusal"
+    turns: int
+    reply: str
+    tool_calls: list[str] = field(default_factory=list)
+
+
+def _run_loop(
+    *,
+    system: str,
+    user_text: str,
+    mcp,
+    llm,
+    model: str,
+    tracer: Tracer,
+    max_turns: int,
+    on_tool: Any = None,  # Callable[[name, args, payload|None], None]
+) -> LoopOutcome:
+    """The shared Anthropic tool-use loop: one agent_decision trace per turn,
+    tool errors fed back as is_error results (never raised). ``on_tool`` is
+    called for each executed tool (payload is None on a tool error)."""
+    tools = mcp.tool_specs()
+    messages: list[dict] = [{"role": "user", "content": user_text}]
+    out = LoopOutcome(stopped="max_turns", turns=0, reply="")
+
+    for turn in range(1, max_turns + 1):
+        out.turns = turn
+        response = llm.messages.create(
+            model=model, max_tokens=MAX_TOKENS, system=system, tools=tools, messages=messages
+        )
+        blocks = list(response.content)
+        text = " ".join(b.text for b in blocks if getattr(b, "type", None) == "text").strip()
+        tool_uses = [b for b in blocks if getattr(b, "type", None) == "tool_use"]
+
+        tracer.emit(
+            TraceEvent(
+                kind="agent_decision",
+                name="agent.turn",
+                trace_id=uuid.uuid4().hex,
+                input={"turn": turn, "request": user_text},
+                output={
+                    "stop_reason": response.stop_reason,
+                    "text": text[:400],
+                    "tools_requested": [b.name for b in tool_uses],
+                },
+                success=True,
+            )
+        )
+        messages.append({"role": "assistant", "content": _blocks_to_dicts(blocks)})
+        if text:
+            out.reply = text
+
+        if response.stop_reason == "refusal":
+            out.stopped = "refusal"
+            return out
+        if not tool_uses:
+            out.stopped = "completed"
+            return out
+
+        results: list[dict] = []
+        for block in tool_uses:
+            out.tool_calls.append(block.name)
+            try:
+                payload = mcp.call(block.name, block.input or {})
+                if on_tool is not None:
+                    on_tool(block.name, block.input or {}, payload)
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(payload, default=str),
+                    }
+                )
+            except MCPToolError as exc:
+                if on_tool is not None:
+                    on_tool(block.name, block.input or {}, None)
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "is_error": True,
+                        "content": exc.message,
+                    }
+                )
+        messages.append({"role": "user", "content": results})
+
+    return out
+
+
 def run_session(
     request: SessionRequest,
     *,
@@ -118,80 +208,36 @@ def run_session(
     llm = llm_client or _anthropic_client()
     model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
 
-    tools = mcp.tool_specs()
-    system = SYSTEM.format(user_id=request.user_id)
-    messages: list[dict] = [{"role": "user", "content": request.raw_text}]
-
     result = SessionResult(stopped="max_turns")
     session_payload: dict | None = None
 
-    for turn in range(1, MAX_TURNS + 1):
-        result.turns = turn
-        response = llm.messages.create(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            system=system,
-            tools=tools,
-            messages=messages,
-        )
-        blocks = list(response.content)
-        text = " ".join(b.text for b in blocks if getattr(b, "type", None) == "text").strip()
-        tool_uses = [b for b in blocks if getattr(b, "type", None) == "tool_use"]
+    def on_tool(name: str, args: dict, payload: Any) -> None:
+        nonlocal session_payload
+        if name == "create_learning_session":
+            session_payload = payload if isinstance(payload, dict) else None
+            result.intent = {
+                "minutes_available": args.get("minutes_available"),
+                "topic": args.get("topic"),
+            }
+        elif name == "create_quiz" and isinstance(payload, list):
+            result.quiz = payload
 
-        tracer.emit(
-            TraceEvent(
-                kind="agent_decision",
-                name="agent.turn",
-                trace_id=uuid.uuid4().hex,
-                input={"turn": turn, "request": request.raw_text},
-                output={
-                    "stop_reason": response.stop_reason,
-                    "text": text[:400],
-                    "tools_requested": [b.name for b in tool_uses],
-                },
-                success=True,
-            )
-        )
-        messages.append({"role": "assistant", "content": _blocks_to_dicts(blocks)})
-        result.reply = text or result.reply
-
-        if response.stop_reason == "refusal":
-            result.stopped = "refusal"
-            break
-        if not tool_uses:
-            result.stopped = "completed" if session_payload else "no_session"
-            break
-
-        tool_results: list[dict] = []
-        for block in tool_uses:
-            result.tool_calls.append(block.name)
-            try:
-                payload = mcp.call(block.name, block.input or {})
-                if block.name == "create_learning_session":
-                    session_payload = payload if isinstance(payload, dict) else None
-                    result.intent = {
-                        "minutes_available": (block.input or {}).get("minutes_available"),
-                        "topic": (block.input or {}).get("topic"),
-                    }
-                elif block.name == "create_quiz" and isinstance(payload, list):
-                    result.quiz = payload
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(payload, default=str),
-                    }
-                )
-            except MCPToolError as exc:
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "is_error": True,
-                        "content": exc.message,
-                    }
-                )
-        messages.append({"role": "user", "content": tool_results})
+    outcome = _run_loop(
+        system=SYSTEM.format(user_id=request.user_id),
+        user_text=request.raw_text,
+        mcp=mcp,
+        llm=llm,
+        model=model,
+        tracer=tracer,
+        max_turns=MAX_TURNS,
+        on_tool=on_tool,
+    )
+    result.turns = outcome.turns
+    result.reply = outcome.reply
+    result.tool_calls = outcome.tool_calls
+    result.stopped = outcome.stopped
+    if outcome.stopped == "completed" and session_payload is None:
+        result.stopped = "no_session"
 
     if session_payload is not None:
         result.session_id = session_payload.get("session_id")
@@ -282,4 +328,81 @@ def start_session(
         quiz=result.quiz,
         result=result,
         _mcp=mcp,
+    )
+
+
+# --- cross-server orchestration (LG-12) -------------------------------------
+
+CONVERSATION_MAX_TURNS = 10
+
+CONVERSATION_SYSTEM = """\
+You help a German learner (user_id={user_id}). Two independent tool surfaces:
+
+- LEARNING tools (get_user_profile, get_words_due_for_review, get_weak_words,
+  get_new_words, create_learning_session, create_quiz, finish_learning_session,
+  ...): a deterministic spaced-repetition core. Never pick, reorder or invent
+  vocabulary yourself; never compute review dates.
+- NOTES tools (write_note, append_note, read_note, list_notes, log_progress): a
+  Markdown vault for recording things. log_progress appends a dated section to
+  progress.md.
+
+Do what the learner asks with the fewest tool calls. When they ask you to
+record / log / note / summarise progress, first gather the facts with the
+learning tools, then write them with log_progress (or a note). Reply in one or
+two sentences when done.
+"""
+
+
+@dataclass
+class ConversationResult:
+    stopped: str  # "completed" | "max_turns" | "refusal"
+    turns: int
+    reply: str
+    tool_calls: list[str] = field(default_factory=list)
+    servers_used: list[str] = field(default_factory=list)  # e.g. ["learning", "notes"]
+
+
+def run_conversation(
+    request: SessionRequest,
+    *,
+    mcp_client=None,
+    llm_client=None,
+    tracer: Tracer | None = None,
+    model: str | None = None,
+) -> ConversationResult:
+    """A single conversation that may span both MCP servers (CLAUDE.md sec. 10).
+
+    Default ``mcp_client`` exposes learning + notes tools together; the trace
+    shows which server each call went to.
+    """
+    from backend.agent.mcp_client import build_default_clients
+
+    tracer = tracer or get_tracer()
+    mcp = mcp_client or build_default_clients(tracer=tracer)
+    llm = llm_client or _anthropic_client()
+    model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
+
+    used: set[str] = set()
+
+    def on_tool(name: str, _args: dict, _payload: Any) -> None:
+        server = getattr(mcp, "server_for", lambda _n: None)(name)
+        if server:
+            used.add(server)
+
+    outcome = _run_loop(
+        system=CONVERSATION_SYSTEM.format(user_id=request.user_id),
+        user_text=request.raw_text,
+        mcp=mcp,
+        llm=llm,
+        model=model,
+        tracer=tracer,
+        max_turns=CONVERSATION_MAX_TURNS,
+        on_tool=on_tool,
+    )
+    return ConversationResult(
+        stopped=outcome.stopped,
+        turns=outcome.turns,
+        reply=outcome.reply,
+        tool_calls=outcome.tool_calls,
+        servers_used=sorted(used),
     )

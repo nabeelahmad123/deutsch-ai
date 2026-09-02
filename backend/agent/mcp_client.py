@@ -55,6 +55,7 @@ class MCPToolClient:
         # Share the tracer so server-side (learning.tool.*) and agent-side
         # (agent.tool_call.*) events land in the same log.
         self._server = server or build_server(tracer=self._tracer)
+        self.name = self._server.name  # "learning" | "notes" | ...
 
     def tool_specs(self) -> list[dict]:
         """Tool definitions in Anthropic Messages API shape."""
@@ -80,3 +81,53 @@ class MCPToolClient:
             payload = _payload(result)
             box["output"] = _preview(payload)
             return payload
+
+
+class MultiServerToolClient:
+    """Presents several MCP servers as one tool surface for the agent.
+
+    Same duck-typed interface as ``MCPToolClient`` (``tool_specs`` / ``call``),
+    so ``run_session`` / ``run_conversation`` don't care how many servers there
+    are. Tool names are assumed unique across servers (they are, for this
+    project's two).
+    """
+
+    def __init__(self, clients: list[MCPToolClient]) -> None:
+        self._clients = list(clients)
+        self._route: dict[str, MCPToolClient] = {}
+        for client in self._clients:
+            for spec in client.tool_specs():
+                self._route.setdefault(spec["name"], client)
+
+    def tool_specs(self) -> list[dict]:
+        specs: list[dict] = []
+        seen: set[str] = set()
+        for client in self._clients:
+            for spec in client.tool_specs():
+                if spec["name"] not in seen:
+                    seen.add(spec["name"])
+                    specs.append(spec)
+        return specs
+
+    def server_for(self, name: str) -> str | None:
+        client = self._route.get(name)
+        return client.name if client else None
+
+    def call(self, name: str, arguments: dict | None = None) -> Any:
+        client = self._route.get(name)
+        if client is None:
+            raise MCPToolError(name, "no MCP server exposes this tool")
+        return client.call(name, arguments)
+
+
+def build_default_clients(*, tracer: Tracer | None = None) -> MultiServerToolClient:
+    """The standard pair: learning server #1 + notes server #2, one shared tracer."""
+    from backend.mcp_servers.secondary_server.server import build_server as build_notes_server
+
+    tracer = tracer or get_tracer()
+    return MultiServerToolClient(
+        [
+            MCPToolClient(build_server(tracer=tracer), tracer=tracer),
+            MCPToolClient(build_notes_server(tracer=tracer), tracer=tracer),
+        ]
+    )
