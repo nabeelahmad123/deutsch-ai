@@ -17,12 +17,22 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `core/session_budget.py` + tests, `tracing/tracer.py`
 - **AC:** `uv run pytest`, `ruff`, `black --check` green; `docker compose config` valid.
 
-### Day 2 — `LG-02` Real frequency + Wiktionary ingestion
-- [ ] Implement `ingest_frequency.build_from_raw()` for the Leipzig archive layout
-- [ ] Download + parse to ~4,000 frequency-ranked lemmas; SUBTLEX-DE cross-check
-- [ ] Implement Wiktionary dump streamer in `ingest_wiktionary.py` (gender, plural, EN gloss)
-- [ ] Licensing check documented in `data/README.md`; raw files stay gitignored
-- **AC:** `build/words.jsonl` has ~4k enriched rows; re-running is deterministic.
+### Day 2 — `LG-02` Real frequency + Wiktionary ingestion  `[x]`
+- [x] `ingest_frequency.build_from_raw()` + `extract_leipzig_words()` for the Leipzig
+      `deu_news_2024_1M` tar.gz layout (`id\tword\tfreq`); token filter, case-fold,
+      freq sort, top-N cut
+- [x] ~4,000 frequency-ranked lemmas; OpenSubtitles cross-check (Spearman ρ = 0.512
+      vs. Leipzig; stands in for SUBTLEX-DE which needs a manual download)
+- [x] `ingest_wiktionary.build_from_kaikki()` — streams the kaikki.org German
+      Wiktextract JSONL; derives article (gender), plural, `translation_en`, IPA;
+      drops inflected-form pseudo-entries
+- [x] `backend/data/README.md` with source + licensing table; `raw/` + `build/` gitignored
+- [x] Parser unit tests (`backend/data/tests/`), added to pytest + CI
+- **AC met:** `build/words.jsonl` = 3,899 enriched rows (of 4,000; 101 had no usable
+  Wiktionary entry); two consecutive full runs produce byte-identical
+  `frequency.jsonl` / `words.jsonl` / `seed.sql` (MD5 verified).
+- **Deferred to `LG-03`:** loading `seed.sql` into live Postgres (Docker daemon
+  not running in this env); `docker compose config` validates.
 
 ### Day 3 — `LG-03` Schema migrations + topic tagging + CRUD hardening
 - [ ] Wire Alembic into `backend/db/migrations/`; initial migration matches `models.py`

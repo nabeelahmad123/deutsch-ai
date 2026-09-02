@@ -1,27 +1,42 @@
-"""Enrich lemmas with gender, plural, and an English gloss from Wiktionary.
+"""Enrich lemmas with gender, plural, an English gloss, and IPA from Wiktionary.
 
-Source: German Wiktionary XML dumps
-        https://dumps.wikimedia.org/dewiktionary/  (dewiktionary-latest-pages-articles.xml.bz2)
-        English Wiktionary is used for the EN gloss.
+Source: English Wiktionary, German entries, pre-extracted with Wiktextract and
+        published as JSONL by kaikki.org
+        https://kaikki.org/dictionary/German/  (kaikki.org-dictionary-German.jsonl)
 
-Licensing: Wiktionary is CC BY-SA. We derive structured fields (article, plural,
-translation_en) rather than redistributing article text.
+Licensing (CC BY-SA, see backend/data/README.md): we derive structured fields
+(article, plural, translation_en, ipa) rather than redistributing article prose.
 
 Input : backend/data/build/frequency.jsonl  (from ingest_frequency.py)
 Output: backend/data/build/words.jsonl with records
     {"lemma","article","plural","translation_en","frequency_rank","topic","ipa_or_audio_ref"}
 
-Day-1 status: the dump streamer/parser is a TODO. `--sample` enriches the bundled
-starter set from a small hand-built lexicon so the DB seed is real.
+`--sample` enriches the bundled starter set from a small hand-built lexicon (no
+download needed). `--kaikki <path>` parses the real extract.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
+from collections.abc import Iterator
 from pathlib import Path
 
 BUILD_DIR = Path(__file__).parent / "build"
+
+# Gender letter (kaikki de-noun head template arg / expansion) -> article.
+_GENDER_TO_ARTICLE = {"m": "der", "f": "die", "n": "das"}
+# Prefer the most useful part of speech when a lemma has several entries.
+_POS_PRIORITY = {"noun": 0, "verb": 1, "adj": 2, "adv": 3, "num": 4, "pron": 5}
+_PLURAL_FROM_EXPANSION = re.compile(r"\bplural (\w[\w'’-]*)")
+# Glosses that are just "this is an inflected form of X" carry no meaning of
+# their own; skip them when the entry has a real definition too.
+_FORM_OF_RE = re.compile(
+    r"^(inflection of\b|.*\b(inflection|gerund|participle|"
+    r"singular|plural|dative|genitive|accusative|nominative|superlative|comparative) of\b)",
+    re.IGNORECASE,
+)
 
 # Hand-built enrichment for the starter set. article/plural only for nouns.
 # topic is left None here; topic tagging is a later step.
@@ -94,23 +109,155 @@ def enrich(record: dict, lexicon: dict) -> dict | None:
     }
 
 
+# --- kaikki / Wiktextract parsing --------------------------------------------
+
+
+def _clean_ipa(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    return raw.strip().strip("/[]").strip() or None
+
+
+def _gender_article(entry: dict) -> str | None:
+    heads = entry.get("head_templates") or []
+    if heads:
+        arg1 = (heads[0].get("args") or {}).get("1", "")
+        first = arg1.split(",", 1)[0].strip().lower()
+        if first in _GENDER_TO_ARTICLE:
+            return _GENDER_TO_ARTICLE[first]
+        expansion = heads[0].get("expansion", "")
+        m = re.search(r"\b([mfn])\b", expansion)
+        if m:
+            return _GENDER_TO_ARTICLE[m.group(1)]
+    for form in entry.get("forms") or []:
+        tags = set(form.get("tags") or [])
+        if "canonical" in tags:
+            for g, art in (("masculine", "der"), ("feminine", "die"), ("neuter", "das")):
+                if g in tags:
+                    return art
+    return None
+
+
+def _plural(entry: dict) -> str | None:
+    for form in entry.get("forms") or []:
+        if form.get("tags") == ["plural"] and form.get("form") not in {"-", "no plural"}:
+            return form["form"]
+    for form in entry.get("forms") or []:
+        tags = set(form.get("tags") or [])
+        if "plural" in tags and "nominative" in tags and "definite" not in tags:
+            return form.get("form")
+    heads = entry.get("head_templates") or []
+    if heads:
+        m = _PLURAL_FROM_EXPANSION.search(heads[0].get("expansion", ""))
+        if m:
+            return m.group(1)
+    return None
+
+
+def _glosses(entry: dict) -> tuple[str | None, bool]:
+    """Return (best gloss, has_real_definition).
+
+    ``has_real_definition`` is False when every sense is just a "form of X"
+    pointer -- a sign this entry is an inflected form, not the lemma itself.
+    """
+    glosses = [
+        g.strip().rstrip(":").strip()
+        for sense in entry.get("senses") or []
+        for g in sense.get("glosses") or []
+        if g.strip()
+    ]
+    if not glosses:
+        return None, False
+    real = [g for g in glosses if not _FORM_OF_RE.match(g)]
+    if real:
+        return real[0][:256], True
+    return glosses[0][:256], False
+
+
+def _ipa(entry: dict) -> str | None:
+    for sound in entry.get("sounds") or []:
+        cleaned = _clean_ipa(sound.get("ipa"))
+        if cleaned:
+            return cleaned
+    return None
+
+
+def iter_kaikki(path: Path) -> Iterator[dict]:
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def build_from_kaikki(path: Path, lemmas: set[str]) -> dict[str, dict]:
+    """Return {lemma: enrichment dict} for the wanted lemmas, best entry per lemma.
+
+    "Best" = highest-priority part of speech (noun > verb > adj > ...); the first
+    such entry in the file wins, which is stable across runs.
+    """
+    chosen: dict[str, tuple[int, dict]] = {}
+    for entry in iter_kaikki(path):
+        word = entry.get("word")
+        if word not in lemmas or entry.get("lang_code") != "de":
+            continue
+        rank = _POS_PRIORITY.get(entry.get("pos", ""), 99)
+        if word in chosen and chosen[word][0] <= rank:
+            continue
+        gloss, is_real = _glosses(entry)
+        # A noun whose only senses are "plural of X" etc. is an inflected form,
+        # not a headword -- don't hang an article/plural off it.
+        is_noun = entry.get("pos") == "noun" and is_real
+        chosen[word] = (
+            rank,
+            {
+                "article": _gender_article(entry) if is_noun else None,
+                "plural": _plural(entry) if is_noun else None,
+                "translation_en": gloss,
+                "ipa": _ipa(entry),
+            },
+        )
+    return {word: data for word, (_rank, data) in chosen.items()}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample", action="store_true", help="enrich the bundled starter set only")
+    parser.add_argument("--kaikki", type=Path, help="kaikki.org German Wiktextract JSONL")
     parser.add_argument("--in", dest="in_path", type=Path, default=BUILD_DIR / "frequency.jsonl")
     parser.add_argument("--out", type=Path, default=BUILD_DIR / "words.jsonl")
     args = parser.parse_args()
 
-    if not args.sample:
-        raise NotImplementedError(
-            "Wiktionary dump parsing not implemented yet; run with --sample for now."
-        )
-
     if not args.in_path.exists():
-        raise SystemExit(f"missing {args.in_path}; run ingest_frequency.py --sample first")
-
+        raise SystemExit(f"missing {args.in_path}; run ingest_frequency.py first")
     records = [json.loads(line) for line in args.in_path.read_text(encoding="utf-8").splitlines()]
-    enriched = [e for r in records if (e := enrich(r, SAMPLE_LEXICON)) is not None]
+
+    if args.sample and not args.kaikki:
+        enriched = [e for r in records if (e := enrich(r, SAMPLE_LEXICON)) is not None]
+    else:
+        kaikki_path = args.kaikki or (Path(__file__).parent / "raw" / "kaikki-de.jsonl")
+        if not kaikki_path.exists():
+            raise SystemExit(
+                f"missing {kaikki_path}; download it (see backend/data/README.md) or use --sample"
+            )
+        wanted = {r["lemma"] for r in records}
+        lex = build_from_kaikki(kaikki_path, wanted)
+        enriched = []
+        for r in records:
+            data = lex.get(r["lemma"])
+            if data is None or not data.get("translation_en"):
+                continue  # no usable Wiktionary entry -> drop (keeps the table clean)
+            enriched.append(
+                {
+                    "lemma": r["lemma"],
+                    "article": data["article"],
+                    "plural": data["plural"],
+                    "translation_en": data["translation_en"],
+                    "frequency_rank": r["frequency_rank"],
+                    "topic": None,
+                    "ipa_or_audio_ref": data["ipa"],
+                }
+            )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as fh:

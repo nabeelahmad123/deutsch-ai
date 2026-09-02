@@ -58,6 +58,7 @@ addopts = "-q"
 testpaths = [
     "backend/core/tests",
     "backend/learner_model/tests",
+    "backend/data/tests",
     "backend/api/tests",
 ]
 filterwarnings = [
