@@ -31,3 +31,8 @@ docs/_scratch/
 # Runtime output
 _traces/
 _vault/
+
+# Local SQLite databases (dev / demo)
+*.db
+*.sqlite
+*.sqlite3

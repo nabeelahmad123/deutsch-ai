@@ -21,11 +21,11 @@ jobs:
         run: |
           uv run ruff check backend
           uv run black --check backend
-      - name: Test core / data / db
+      - name: Test core / data / db / study / learner_model
         run: >
           uv run pytest
           backend/core/tests backend/data/tests backend/db/tests
-          backend/learner_model/tests
+          backend/study/tests backend/learner_model/tests
           --cov=backend.core --cov-report=term --cov-fail-under=90
 
   # The full suite, including the MCP server and the agent orchestrator.
