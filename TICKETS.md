@@ -321,10 +321,23 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Week 4 — Learned model, evaluation, frontend, ship
 
-### Day 16 — `LG-16` Half-Life Regression model
-- [ ] Feature extraction (lag, correct/incorrect history, word difficulty/frequency)
-- [ ] `predict_half_life`, `predict_recall`, `fit` (Settles & Meeder 2016 objective)
-- **AC:** trains on simulator logs; loss decreases; half-life clamped to bounds.
+### Day 16 — `LG-16` Half-Life Regression model  `[x]`
+- [x] `learner_model/hlr.py` — log-linear half-life `log2(ĥ) = θ·x`, recall
+      `p̂ = 2^(-lag/ĥ)`. Loss = `(p̂-p)² + α(log2 ĥ - log2 h_ref)² + l2‖θ‖²`
+      (Settles & Meeder eq. 4; half-life term in log space for stability).
+- [x] `make_features(n_correct, n_incorrect, difficulty)` → `[bias,
+      √n_correct, √n_incorrect, difficulty]`; `to_instances(interactions, *,
+      difficulty)` walks each word's timeline (skips first exposure).
+- [x] `HLRModel.fit()` — full-batch gradient descent (deterministic, no RNG);
+      `predict_half_life` / `predict_recall`, both clamped
+      ([15 min, 365 d] / [0, 1]).
+- **AC met:** `test_hlr.py` — fit reduces loss ≥10% and is monotone in the tail;
+      predictions respect bounds and fall with lag; more prior-correct →
+      longer half-life; **beats a constant-recall baseline on held-out logs**.
+      Learned signs are right: √correct weight +1.4, √incorrect −0.9.
+      525 pass + 2 skipped.
+
+> Next: `LG-17` — the SM-2 vs HLR vs random evaluation harness.
 
 ### Day 17 — `LG-17` Evaluation harness
 - [ ] `evaluate.py`: random vs SM-2 vs HLR through the simulator
