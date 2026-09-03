@@ -159,6 +159,7 @@ def run_evaluation(
     horizon_days: float = 90.0,
     seed: int = 0,
     hlr_iterations: int = 600,
+    include_raw: bool = False,
 ) -> dict:
     word_ids = list(range(1, n_words + 1))
     difficulty = {w: round(w / (n_words + 1), 3) for w in word_ids}
@@ -209,11 +210,19 @@ def run_evaluation(
                     )
             by_type[learner_type] = _metrics(type_retention, retention=True)
             retention_trials.append(type_retention)
+        overall_ret = merged(retention_trials)
         results[name] = {
-            "retention": _metrics(merged(retention_trials), retention=True),
+            "retention": _metrics(overall_ret, retention=True),
             "calibration": _metrics(calibration, retention=False),
             "by_learner_type": by_type,
         }
+        if include_raw:
+            results[name]["_raw"] = {
+                "cal_p": calibration.p_pred,
+                "cal_y": calibration.correct,
+                "ret_t": overall_ret.t_days,
+                "ret_y": overall_ret.correct,
+            }
 
     return {
         "config": {

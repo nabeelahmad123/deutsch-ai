@@ -360,10 +360,24 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 > Next: `LG-18` — plots + `docs/EVALUATION.md`.
 
-### Day 18 — `LG-18` Evaluation writeup
-- [ ] Generate plots for every metric; write `docs/EVALUATION.md` (real plots, no placeholders)
-- [ ] Validate ≥1 metric against logged real sessions from the agent runs
-- **AC (DoD §17):** `EVALUATION.md` complete with SM-2 vs HLR comparison + 1 real-data metric.
+### Day 18 — `LG-18` Evaluation writeup  `[x]`
+- [x] `learner_model/report.py` — `python -m backend.learner_model.report` runs
+      the eval + real-data check, draws 4 figures (recall over time, calibration
+      reliability curve, calibration-metric bars, retention-vs-cost + efficiency),
+      writes **`docs/EVALUATION.md`** with a metrics table + interpretation.
+      Committed: `docs/EVALUATION.md` + `docs/eval_*.png`. matplotlib → `[dev]`.
+- [x] `learner_model/real_data.py` — `collect_real_review_logs()` runs the
+      **actual `backend.core.scheduler`** against a real (in-memory SQLite)
+      `review_logs` table over a 90-day timeline with a simulator answerer.
+- [x] **Real-data validation:** offline eval SM-2 recall **0.489** vs real
+      `review_logs` recall **0.481** — **Δ = 0.008** (`test_report.py`::
+      `test_real_review_logs_recall_matches_offline_sm2`).
+- **AC met (DoD §17):** `docs/EVALUATION.md` has real plots (not placeholders),
+      the SM-2 vs HLR comparison, and a metric validated against real logged
+      sessions. 550 pass + 2 skipped.
+
+> **Build-order step 7 (simulator + HLR + eval + plots) is complete.**
+> Next: `LG-19`, minimal frontend.
 
 ### Day 19 — `LG-19` Minimal frontend
 - [ ] Run-a-session page (word/quiz → answer → feedback)

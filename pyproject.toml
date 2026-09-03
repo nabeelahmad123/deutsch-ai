@@ -29,6 +29,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.7",
     "black>=24.10",
+    "matplotlib>=3.9",  # backend/learner_model/report.py -> docs/EVALUATION.md plots
 ]
 
 [build-system]
@@ -56,6 +57,8 @@ known-first-party = ["backend"]
 [tool.ruff.lint.per-file-ignores]
 # Alembic's env.py runs config code between its import groups by design.
 "backend/db/migrations/env.py" = ["E402"]
+# report.py builds Markdown in f-strings whose output lines exceed 100 chars.
+"backend/learner_model/report.py" = ["E501"]
 
 [tool.black]
 line-length = 100
