@@ -339,10 +339,26 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 > Next: `LG-17` — the SM-2 vs HLR vs random evaluation harness.
 
-### Day 17 — `LG-17` Evaluation harness
-- [ ] `evaluate.py`: random vs SM-2 vs HLR through the simulator
-- [ ] Metrics: recall accuracy over time, Brier score, log-loss, AUC, review efficiency
-- **AC:** single command produces a metrics dict for all three strategies.
+### Day 17 — `LG-17` Evaluation harness  `[x]`
+- [x] `learner_model/metrics.py` — `brier_score`, `log_loss`, `roc_auc`
+      (rank-based Mann-Whitney, tie-safe, NaN for a single class),
+      `bucketed_accuracy`. Pure NumPy.
+- [x] `learner_model/strategies.py` — `RandomStrategy` (uniform intervals, no
+      model), `SM2Strategy` (wraps `backend.core.scheduler`; reads its interval
+      as a half-life proxy for a recall probability), `HLRStrategy` (frozen
+      pre-trained `HLRModel`; schedules to a 0.75 target retention).
+- [x] `learner_model/evaluate.py` — `run_evaluation()` scores each strategy on
+      two axes: **retention** on its own schedule (recall accuracy overall +
+      bucketed over 90 days, review efficiency), and **calibration** on a shared
+      random probe schedule (Brier / log-loss / AUC — isolates the recall model
+      from the schedule). `python -m backend.learner_model.evaluate` prints it.
+- **AC met:** one command → a metrics dict for all 3 strategies (shape +
+      determinism + JSON-serialisable asserted by `test_evaluate.py`). Headline:
+      **recall — random 0.04 / sm2 0.48 / hlr 0.92**; **calibration AUC — random
+      0.50 / sm2 0.90 / hlr 0.85**. HLR wins retention; SM-2 wins efficiency +
+      calibration. 544 pass + 2 skipped.
+
+> Next: `LG-18` — plots + `docs/EVALUATION.md`.
 
 ### Day 18 — `LG-18` Evaluation writeup
 - [ ] Generate plots for every metric; write `docs/EVALUATION.md` (real plots, no placeholders)
