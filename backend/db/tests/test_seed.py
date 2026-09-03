@@ -44,5 +44,9 @@ def test_sql_replay_preserves_semicolons_in_glosses(sqlite_url):
     db_seed.upgrade_to_head()
     db_seed.seed_from_sql(db_seed.SEED_SQL)
     with create_engine(sqlite_url).connect() as c:
-        gloss = c.scalar(select(Word.translation_en).where(Word.lemma == "der"))
-    assert gloss and ";" in gloss  # "who; that; which" survived the replay
+        # some gloss in the seed contains a semicolon; naive ';' splitting would
+        # have shattered its INSERT
+        with_semicolon = c.scalar(
+            select(func.count()).select_from(Word).where(Word.translation_en.like("%;%"))
+        )
+    assert with_semicolon > 0

@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 
 from backend.data.assign_cefr import assign_cefr
 from backend.data.assign_topic import assign_topic
+from backend.data.build_seed import is_function_word, is_grammatical_gloss
 from backend.db.models import User, Word
 from backend.db.session import get_engine, resolve_url, session_scope
 
@@ -41,6 +42,8 @@ def _word_rows_from_jsonl(path: Path) -> list[dict]:
         cefr = assign_cefr(rec["frequency_rank"])
         if cefr is None:
             continue
+        if is_function_word(rec["lemma"]) or is_grammatical_gloss(rec.get("translation_en", "")):
+            continue  # same filter build_seed.py applies to seed.sql
         rows.append(
             {
                 "lemma": rec["lemma"],

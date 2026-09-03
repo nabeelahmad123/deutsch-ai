@@ -53,7 +53,7 @@ Details and the five non-negotiable principles: [`docs/ARCHITECTURE.md`](docs/AR
 | area | package | notes |
 |---|---|---|
 | deterministic core | `backend/core/` | SM-2, session budgeting, new-word selection, read projections. **Zero LLM/HTTP imports** (AST-asserted); 100% test coverage. |
-| data pipeline | `backend/data/` | Leipzig frequency + Wiktextract enrichment → 3,899 A1–B2 words. `seed.sql` committed; raw corpora gitignored. |
+| data pipeline | `backend/data/` | Leipzig frequency + Wiktextract enrichment → ~2,560 A1–B2 study words (~1,340 function words and inflected/grammatical entries filtered out). `seed.sql` committed; raw corpora gitignored. |
 | schema | `backend/db/` | SQLAlchemy models + Alembic migrations; `seed.py` migrate-and-load. |
 | quiz + grading | `backend/study/` | quiz construction; exact/fuzzy grading, with an LLM semantic path for free-text. Shared by the MCP server and the API. |
 | MCP server #1 | `backend/mcp_servers/learning_server/` | 9 tools + a `vocab://` resource; own process, own transport. |
@@ -84,7 +84,7 @@ uv run pytest                              # 554 tests
 
 # a local SQLite DB instead of Postgres:
 export DATABASE_URL="sqlite+pysqlite:///local.db"
-uv run python -m backend.db.seed           # migrate + load the 3,899-word seed
+uv run python -m backend.db.seed           # migrate + load the seed
 
 # the study API + static frontend:
 uv run uvicorn backend.api.main:app --port 8000 &
