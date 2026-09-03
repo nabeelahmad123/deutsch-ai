@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>learn-german — study</title>
+  <style>
+    :root { --fg:#1a1a1a; --dim:#666; --line:#e2e2e2; --accent:#2d6cdf; --ok:#1a7f37; --bad:#b00; --bg:#fafafa; }
+    * { box-sizing: border-box; }
+    body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg);
+           margin: 0 auto; max-width: 34rem; padding: 1.5rem; }
+    h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
+    nav { margin-bottom: 1rem; }
+    nav a, .tab { color: var(--accent); text-decoration: none; margin-right: 1rem; cursor: pointer; }
+    .tab.on { color: var(--fg); font-weight: 600; border-bottom: 2px solid var(--accent); }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+    .prompt { font-size: 1.05rem; margin-bottom: .5rem; }
+    .hint { color: var(--dim); font-size: .85rem; }
+    input[type=text] { font: inherit; width: 100%; padding: .5rem; border: 1px solid var(--line); border-radius: 6px; }
+    button { font: inherit; padding: .45rem 1rem; border: 1px solid var(--accent); background: var(--accent);
+             color: #fff; border-radius: 6px; cursor: pointer; }
+    button.ghost { background: #fff; color: var(--accent); }
+    button:disabled { opacity: .5; cursor: default; }
+    .fb { margin-top: .75rem; padding: .5rem .75rem; border-radius: 6px; }
+    .fb.ok { background: #e7f6ec; color: var(--ok); }
+    .fb.bad { background: #fdecec; color: var(--bad); }
+    .opt { display: block; width: 100%; text-align: left; background: #fff; color: var(--fg);
+           border: 1px solid var(--line); margin: .25rem 0; }
+    .stats { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .stat { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: .4rem .7rem; }
+    .stat b { font-size: 1.1rem; display: block; }
+    ul { padding-left: 1.1rem; } li { margin: .15rem 0; }
+    .err { color: var(--bad); }
+    .muted { color: var(--dim); font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <h1>learn-german</h1>
+  <nav>
+    <a id="vocablink">← vocabulary</a>
+    <span class="tab on" data-view="session">Session</span>
+    <span class="tab" data-view="progress">Progress</span>
+    <span class="muted">user <input id="uid" type="text" value="1" style="width:3rem;padding:.1rem .3rem" /></span>
+  </nav>
+
+  <div id="session">
+    <div class="card" id="setup">
+      <label>Minutes <input id="minutes" type="text" value="10" style="width:4rem" /></label>
+      &nbsp; <label>Topic <input id="topic" type="text" placeholder="(any)" style="width:8rem" /></label>
+      &nbsp; <button id="start">Start session</button>
+      <div id="setupmsg" class="muted"></div>
+    </div>
+    <div class="card" id="quiz" hidden>
+      <div class="muted" id="progresslabel"></div>
+      <div class="prompt" id="qprompt"></div>
+      <div class="hint" id="qhint"></div>
+      <div id="answerarea"></div>
+      <div id="feedback"></div>
+      <div style="margin-top:.75rem">
+        <button id="next" hidden>Next</button>
+        <button id="finish" class="ghost" hidden>Finish</button>
+      </div>
+    </div>
+    <div class="card" id="summary" hidden></div>
+  </div>
+
+  <div id="progress" hidden></div>
+
+  <script>
+    const API = new URLSearchParams(location.search).get("api") || "http://localhost:8000";
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => (s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    $("vocablink").href = "index.html?api=" + encodeURIComponent(API);
+
+    async function api(path, opts) {
+      const r = await fetch(API + path, { headers: { "Content-Type": "application/json" }, ...opts });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+      return r.json();
+    }
+    const uid = () => parseInt($("uid").value || "1", 10);
+
+    // --- tabs ---
+    document.querySelectorAll(".tab").forEach((t) =>
+      t.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("on", x === t));
+        const v = t.dataset.view;
+        $("session").hidden = v !== "session";
+        $("progress").hidden = v !== "progress";
+        if (v === "progress") loadProgress();
+      }),
+    );
+
+    // --- session ---
+    let queue = [], idx = 0, sessionId = null, answered = 0, correct = 0;
+
+    $("start").onclick = async () => {
+      $("setupmsg").textContent = "composing…";
+      try {
+        const s = await api("/study/sessions", {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: uid(),
+            minutes_available: parseInt($("minutes").value || "10", 10),
+            topic: $("topic").value.trim() || null,
+          }),
+        });
+        sessionId = s.session_id;
+        const words = [...s.review_words, ...s.new_words];
+        if (!words.length) { $("setupmsg").textContent = "nothing to study right now."; return; }
+        const q = await api("/study/quiz", {
+          method: "POST",
+          body: JSON.stringify({ word_ids: words.map((w) => w.id), quiz_type: "en_to_de" }),
+        });
+        queue = q; idx = 0; answered = 0; correct = 0;
+        $("setup").hidden = true; $("summary").hidden = true; $("quiz").hidden = false;
+        showQuestion();
+      } catch (e) { $("setupmsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+    };
+
+    function showQuestion() {
+      const q = queue[idx];
+      $("progresslabel").textContent = `Question ${idx + 1} of ${queue.length}`;
+      $("qprompt").textContent = q.prompt;
+      $("qhint").textContent = q.hint ? "hint: " + q.hint : "";
+      $("feedback").innerHTML = "";
+      $("next").hidden = true; $("finish").hidden = true;
+      if (q.options) {
+        $("answerarea").innerHTML = q.options
+          .map((o) => `<button class="opt" data-opt="${esc(o)}">${esc(o)}</button>`).join("");
+        $("answerarea").querySelectorAll(".opt").forEach((b) =>
+          (b.onclick = () => submit(b.dataset.opt)));
+      } else {
+        $("answerarea").innerHTML =
+          `<input type="text" id="ans" autocomplete="off" placeholder="your answer" />
+           <button id="go" style="margin-top:.5rem">Check</button>`;
+        $("ans").focus();
+        $("ans").onkeydown = (e) => { if (e.key === "Enter") submit($("ans").value); };
+        $("go").onclick = () => submit($("ans").value);
+      }
+    }
+
+    async function submit(text) {
+      if (!text || !text.trim()) return;
+      $("answerarea").querySelectorAll("button,input").forEach((el) => (el.disabled = true));
+      const fb = await api("/study/answers", {
+        method: "POST",
+        body: JSON.stringify({ user_id: uid(), question_id: queue[idx].question_id, user_answer: text }),
+      });
+      answered++; if (fb.correct) correct++;
+      $("feedback").innerHTML = fb.correct
+        ? `<div class="fb ok">✓ correct <span class="muted">(${fb.method})</span></div>`
+        : `<div class="fb bad">✗ expected <b>${esc(fb.expected)}</b> <span class="muted">(${fb.method})</span></div>`;
+      const last = idx === queue.length - 1;
+      $("next").hidden = last; $("finish").hidden = !last;
+    }
+
+    $("next").onclick = () => { idx++; showQuestion(); };
+    $("finish").onclick = async () => {
+      $("quiz").hidden = true;
+      let row = {};
+      try { row = await api(`/study/sessions/${sessionId}/finish`, {
+        method: "POST", body: JSON.stringify({ words_covered: answered }) }); } catch {}
+      $("summary").hidden = false;
+      $("summary").innerHTML =
+        `<b>Session done.</b><br>${correct}/${answered} correct` +
+        (answered ? ` (${Math.round((100 * correct) / answered)}%)` : "") +
+        `<br><span class="muted">session #${row.session_id ?? sessionId}, ${row.words_covered ?? answered} words covered</span>` +
+        `<br><br><button class="ghost" onclick="location.reload()">New session</button>`;
+    };
+
+    // --- progress ---
+    async function loadProgress() {
+      $("progress").innerHTML = "<div class='muted'>loading…</div>";
+      let p;
+      try { p = await api(`/study/users/${uid()}/progress`); }
+      catch (e) { $("progress").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+      const wl = (title, arr) =>
+        `<div class="card"><b>${title}</b><ul>` +
+        (arr.length ? arr.map((w) => `<li>${w.article ? w.article + " " : ""}${esc(w.lemma)} — ${esc(w.translation_en)}</li>`).join("")
+                    : "<li class='muted'>none</li>") + "</ul></div>";
+      $("progress").innerHTML =
+        `<div class="stats">
+           <div class="stat">reviews<b>${p.total_reviews}</b></div>
+           <div class="stat">words seen<b>${p.words_seen}</b></div>
+           <div class="stat">due now<b>${p.words_due_now}</b></div>
+           <div class="stat">CEFR ceiling<b>${p.cefr_ceiling}</b></div>
+           <div class="stat">accuracy<b>${p.overall_accuracy == null ? "—" : Math.round(p.overall_accuracy * 100) + "%"}</b></div>
+         </div>` +
+        wl("Due for review", p.due_words) +
+        wl("Weakest words", p.weak_words);
+    }
+  </script>
+</body>
+</html>

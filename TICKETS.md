@@ -379,7 +379,26 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 > **Build-order step 7 (simulator + HLR + eval + plots) is complete.**
 > Next: `LG-19`, minimal frontend.
 
-### Day 19 — `LG-19` Minimal frontend
+### Day 19 — `LG-19` Minimal frontend  `[x]`
+- [x] `backend/study/` — hoisted `quiz.py` + `grading.py` out of the MCP server
+      into a shared package (the MCP server and the API both use them; grading's
+      LLM import stays lazy). Tests moved to `backend/study/tests/`.
+- [x] `backend/api/study.py` — human-facing study endpoints (the agent uses MCP,
+      not this): `POST /study/sessions` (compose), `/study/quiz`, `/study/answers`
+      (exact/fuzzy grade + `update_after_review`), `/study/sessions/{id}/finish`,
+      `GET /study/users/{id}/progress`. Thin wrappers over `backend.core` +
+      `backend.study`.
+- [x] `frontend/study.html` — a **Session** tab (compose → answer each question →
+      per-answer ✓/✗ feedback → summary) and a **Progress** tab (reviews / words
+      seen / due / CEFR ceiling / accuracy + due & weakest word lists). Vanilla
+      JS, `?api=` configurable, linked to/from the vocab browser.
+- **AC met:** both pages work against the live backend (verified: `/study.html`
+      serves; `/study/users/1/progress` returns real data; a session composes 4
+      review + 15 new words). `backend/api/tests/test_study.py` drives the whole
+      flow + error paths. 554 pass + 2 skipped. Frontend stayed <10% of effort.
+
+> **Build-order step 8 begins.** Next: `LG-20` — ship (docker compose up e2e,
+> green CI, README + architecture diagram).
 - [ ] Run-a-session page (word/quiz → answer → feedback)
 - [ ] Basic progress page (words learned, due count, retention)
 - **AC:** both pages work against the live backend; ≤10% of project time spent here.

@@ -67,3 +67,68 @@ class ReviewLogOut(BaseModel):
     correct: bool
     response_time_ms: int
     source: ReviewSource
+
+
+# --- study flow (minimal frontend, CLAUDE.md section 13) --------------------
+
+
+class SessionIn(BaseModel):
+    user_id: int
+    minutes_available: int = Field(ge=1, le=120)
+    topic: str | None = None
+
+
+class SessionOut(BaseModel):
+    session_id: int | None
+    user_id: int
+    minutes_available: int
+    topic: str | None
+    review_words: list[dict]
+    new_words: list[dict]
+
+
+class QuizIn(BaseModel):
+    word_ids: list[int] = Field(min_length=1, max_length=50)
+    quiz_type: str = "en_to_de"
+
+
+class QuizQuestionOut(BaseModel):
+    question_id: str
+    word_id: int
+    quiz_type: str
+    prompt: str
+    options: list[str] | None
+    hint: str | None
+
+
+class AnswerIn(BaseModel):
+    user_id: int
+    question_id: str
+    user_answer: str = Field(max_length=200)
+
+
+class AnswerOut(BaseModel):
+    question_id: str
+    word_id: int
+    correct: bool
+    score: float
+    rationale: str
+    expected: str
+    method: str
+    new_state: dict
+
+
+class FinishIn(BaseModel):
+    words_covered: int = Field(ge=0, le=1000)
+
+
+class ProgressOut(BaseModel):
+    user_id: int
+    target: str
+    cefr_ceiling: str
+    total_reviews: int
+    words_seen: int
+    words_due_now: int
+    overall_accuracy: float | None
+    due_words: list[dict]
+    weak_words: list[dict]

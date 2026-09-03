@@ -28,8 +28,8 @@ from mcp.server.mcpserver.exceptions import ResourceError, ResourceNotFoundError
 from backend.core import read_models, scheduler
 from backend.core.read_models import CardStateView, SessionView, UserProfile, WordView
 from backend.db.session import session_scope
-from backend.mcp_servers.learning_server import quiz
-from backend.mcp_servers.learning_server.grading import AnswerEvaluation, grade
+from backend.study import quiz
+from backend.study.grading import AnswerEvaluation, grade
 from backend.tracing.tracer import Tracer
 
 INSTRUCTIONS = (

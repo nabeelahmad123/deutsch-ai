@@ -56,4 +56,4 @@ Tracked in `CLAUDE.md` section 15 and `TICKETS.md`. Next: **step 5 — MCP serve
 | 5 | MCP server #2 + cross-server orchestration | done — one conversation spans learning + notes servers |
 | 6 | Failure injection + tracing + recovery rate | done — see docs/FAILURE_RECOVERY.md |
 | 7 | Learner simulator + HLR vs SM-2 eval + plots | done — see docs/EVALUATION.md (Δ vs real logs = 0.008) |
-| 8 | Minimal frontend + Docker/CI + README | Docker/CI done |
+| 8 | Minimal frontend + Docker/CI + README | frontend done (LG-19); final ship = LG-20 |

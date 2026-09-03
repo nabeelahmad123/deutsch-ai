@@ -71,6 +71,7 @@ testpaths = [
     "backend/learner_model/tests",
     "backend/data/tests",
     "backend/db/tests",
+    "backend/study/tests",
     "backend/api/tests",
     "backend/mcp_servers/tests",
     "backend/agent/tests",

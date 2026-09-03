@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from backend.mcp_servers.learning_server.grading import (
+from backend.study.grading import (
     GradeResult,
     fuzzy_match,
     grade,

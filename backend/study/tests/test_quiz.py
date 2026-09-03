@@ -3,7 +3,7 @@
 import pytest
 
 from backend.core.read_models import WordView
-from backend.mcp_servers.learning_server.quiz import (
+from backend.study.quiz import (
     build_question,
     decode_qid,
     encode_qid,

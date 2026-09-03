@@ -26,10 +26,12 @@ from backend.api.schemas import (
     WordOut,
     WordPage,
 )
+from backend.api.study import router as study_router
 from backend.db.models import CEFRLevel, ReviewLog, User, Word
 from backend.db.session import get_session
 
 app = FastAPI(title="learn-german backend", version="0.1.0")
+app.include_router(study_router)
 
 # The minimal frontend (a static page) calls this API from the browser. Origins
 # are configurable; default is permissive for local dev.
