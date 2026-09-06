@@ -20,10 +20,11 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from backend.core.session_budget import MAX_NEW_WORDS_PER_SESSION, plan_budget
+from backend.db.models import CardState as CardStateRow
 from backend.db.models import CEFRLevel, ReviewLog, ReviewSource, User, Word
 from backend.db.models import Session as SessionRow
 
@@ -120,6 +121,12 @@ def _as_utc(value: dt.datetime) -> dt.datetime:
     return value.astimezone(dt.UTC)
 
 
+def _naive_utc(value: dt.datetime) -> dt.datetime:
+    """UTC wall-clock with tzinfo stripped -- what we store in ``card_states`` so
+    ``<=`` comparisons behave identically on SQLite and Postgres."""
+    return _as_utc(value).replace(tzinfo=None)
+
+
 def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
 
@@ -166,13 +173,86 @@ def replay(logs: Iterable[ReviewLog]) -> CardState:
     return state
 
 
+def _state_from_row(row: CardStateRow) -> CardState:
+    return CardState(
+        repetitions=row.repetitions,
+        ease_factor=row.ease_factor,
+        interval_days=row.interval_days,
+        last_reviewed=_as_utc(row.last_reviewed) if row.last_reviewed else None,
+    )
+
+
+def _write_card_state(
+    session: DbSession, user_id: int, word_id: WordId, state: CardState, logs: list[ReviewLog]
+) -> CardStateRow:
+    """Upsert the derived ``card_states`` row for one (user, word)."""
+    row = session.get(CardStateRow, (user_id, word_id))
+    if row is None:
+        row = CardStateRow(user_id=user_id, word_id=word_id)
+        session.add(row)
+    row.repetitions = state.repetitions
+    row.ease_factor = state.ease_factor
+    row.interval_days = state.interval_days
+    row.reviews = len(logs)
+    row.correct_reviews = sum(1 for log in logs if log.correct)
+    row.last_reviewed = _naive_utc(state.last_reviewed) if state.last_reviewed else None
+    due = state.due_at()
+    row.due_at = _naive_utc(due) if due else None
+    return row
+
+
+def _rebuild_one(session: DbSession, user_id: int, word_id: WordId) -> CardState:
+    logs = list(
+        session.scalars(
+            select(ReviewLog)
+            .where(ReviewLog.user_id == user_id, ReviewLog.word_id == word_id)
+            .order_by(ReviewLog.timestamp, ReviewLog.id)
+        )
+    )
+    state = replay(logs)
+    if logs:
+        _write_card_state(session, user_id, word_id, state, logs)
+        session.flush()
+    return state
+
+
+def rebuild_user_card_states(session: DbSession, user_id: int) -> int:
+    """Rebuild every ``card_states`` row for a user from ``review_logs``. Used to
+    backfill after the 0003 migration and as a repair hook."""
+    by_word = _logs_by_word(session, user_id)
+    for word_id, logs in by_word.items():
+        _write_card_state(session, user_id, word_id, replay(logs), logs)
+    session.flush()
+    return len(by_word)
+
+
+def ensure_user_card_states(session: DbSession, user_id: int) -> None:
+    """Lazily backfill a user's derived state if it is behind the logs (e.g. rows
+    written before the 0003 migration).
+
+    Memoised per ``Session`` (``session.info``) so a request that touches several
+    card_states readers -- the dashboard hits five -- pays the check once. Safe:
+    nothing desyncs the cache mid-session except ``update_after_review``, which
+    maintains it, and an explicit ``rebuild_user_card_states``."""
+    checked: set[int] = session.info.setdefault("_card_states_checked", set())
+    if user_id in checked:
+        return
+    checked.add(user_id)
+    logged = session.scalar(
+        select(func.count(func.distinct(ReviewLog.word_id))).where(ReviewLog.user_id == user_id)
+    )
+    have = session.scalar(
+        select(func.count()).select_from(CardStateRow).where(CardStateRow.user_id == user_id)
+    )
+    if (logged or 0) > (have or 0):
+        rebuild_user_card_states(session, user_id)
+
+
 def get_card_state(session: DbSession, user_id: int, word_id: WordId) -> CardState:
-    logs = session.scalars(
-        select(ReviewLog)
-        .where(ReviewLog.user_id == user_id, ReviewLog.word_id == word_id)
-        .order_by(ReviewLog.timestamp, ReviewLog.id)
-    ).all()
-    return replay(logs)
+    row = session.get(CardStateRow, (user_id, word_id))
+    if row is not None:
+        return _state_from_row(row)
+    return _rebuild_one(session, user_id, word_id)
 
 
 def _logs_by_word(session: DbSession, user_id: int) -> dict[int, list[ReviewLog]]:
@@ -189,39 +269,39 @@ def _logs_by_word(session: DbSession, user_id: int) -> dict[int, list[ReviewLog]
 
 
 def words_due_for_review(session: DbSession, user_id: int, as_of: dt.datetime) -> list[WordId]:
-    """Word ids whose reconstructed due date is on or before ``as_of``.
-
-    Ordered by due date (most overdue first), then word id. New words (no review
-    history) are never "due" -- they are handled by ``select_new_words``.
+    """Word ids whose SM-2 due date is on or before ``as_of``, most overdue
+    first then word id. Reads the ``card_states`` cache (indexed); new words
+    (no history) never appear -- they go through ``select_new_words``.
     """
-    as_of = _as_utc(as_of)
-    due: list[tuple[dt.datetime, int]] = []
-    for word_id, word_logs in _logs_by_word(session, user_id).items():
-        state = replay(word_logs)
-        if state.is_due(as_of):
-            due.append((state.due_at(), word_id))
-
-    due.sort(key=lambda pair: (pair[0], pair[1]))
-    return [word_id for _due_at, word_id in due]
+    ensure_user_card_states(session, user_id)
+    cutoff = _naive_utc(as_of)
+    rows = session.execute(
+        select(CardStateRow.word_id, CardStateRow.due_at)
+        .where(
+            CardStateRow.user_id == user_id,
+            CardStateRow.due_at.is_not(None),
+            CardStateRow.due_at <= cutoff,
+        )
+        .order_by(CardStateRow.due_at, CardStateRow.word_id)
+    )
+    return [word_id for word_id, _due in rows]
 
 
 def weak_words(session: DbSession, user_id: int, limit: int) -> list[WordId]:
-    """The user's most fragile seen words, weakest first.
-
-    Weakness is ranked by the reconstructed SM-2 ease factor (lower = harder for
-    this learner), then by historical accuracy, then word id. New words are not
-    included -- weakness needs a track record.
+    """The user's most fragile seen words, weakest first: lowest SM-2 ease
+    factor, then lowest historical accuracy, then word id. Reads ``card_states``.
     """
     if limit <= 0:
         return []
-    scored: list[tuple[float, float, int]] = []
-    for word_id, word_logs in _logs_by_word(session, user_id).items():
-        state = replay(word_logs)
-        correct = sum(1 for log in word_logs if log.correct)
-        accuracy = correct / len(word_logs)
-        scored.append((state.ease_factor, accuracy, word_id))
-    scored.sort()
-    return [word_id for _ef, _acc, word_id in scored[:limit]]
+    ensure_user_card_states(session, user_id)
+    accuracy = CardStateRow.correct_reviews * 1.0 / func.nullif(CardStateRow.reviews, 0)
+    rows = session.scalars(
+        select(CardStateRow.word_id)
+        .where(CardStateRow.user_id == user_id, CardStateRow.reviews > 0)
+        .order_by(CardStateRow.ease_factor, accuracy, CardStateRow.word_id)
+        .limit(limit)
+    )
+    return list(rows)
 
 
 def update_after_review(
@@ -232,13 +312,15 @@ def update_after_review(
     response_time_ms: int,
     *,
     as_of: dt.datetime | None = None,
+    error_type: str | None = None,
 ) -> None:
     """Record one review outcome as a ``review_logs`` row.
 
     State is derived from the logs, so there is nothing else to persist. The
     row's ``source`` is ``new`` on the card's first ever review, else ``review``.
-    ``as_of`` defaults to now; the simulator and tests pass it explicitly for
-    determinism. The caller controls the transaction (this only flushes).
+    ``error_type`` is an optional diagnostic label (grading.diagnose) stored as-is
+    -- it does not affect scheduling. ``as_of`` defaults to now; the simulator and
+    tests pass it explicitly for determinism. The caller controls the transaction.
 
     Raises ``LookupError`` for an unknown user or word (SQLite does not enforce
     the foreign keys, so guard explicitly).
@@ -260,9 +342,12 @@ def update_after_review(
             correct=correct,
             response_time_ms=max(0, response_time_ms),
             source=ReviewSource.review if seen_before else ReviewSource.new,
+            error_type=error_type if not correct else None,
         )
     )
     session.flush()
+    # Refresh the derived state for this one word (cheap: a card has few logs).
+    _rebuild_one(session, user_id, word_id)
 
 
 def cefr_ceiling(session: DbSession, user_id: int) -> CEFRLevel:
@@ -283,13 +368,27 @@ def cefr_ceiling(session: DbSession, user_id: int) -> CEFRLevel:
     return _CEFR_ORDER[min(hardest + 1, len(_CEFR_ORDER) - 1)]
 
 
-def select_new_words(session: DbSession, user_id: int, topic: str | None, n: int) -> list[WordId]:
-    """The ``n`` most frequent words the user has never seen, within their CEFR
-    ceiling, optionally restricted to ``topic``. Frequency-ordered, deterministic.
+def select_new_words(
+    session: DbSession,
+    user_id: int,
+    topic: str | None,
+    n: int,
+    *,
+    level: CEFRLevel | None = None,
+) -> list[WordId]:
+    """The ``n`` most frequent words the user has never seen, optionally
+    restricted to ``topic``. Frequency-ordered, deterministic.
+
+    ``level`` pins the CEFR band to study explicitly (a learner choice from the
+    UI); without it, words are drawn from every band up to the learner's derived
+    ``cefr_ceiling``.
     """
     if n <= 0:
         return []
-    allowed = _CEFR_ORDER[: _CEFR_ORDER.index(cefr_ceiling(session, user_id)) + 1]
+    if level is not None:
+        allowed = (level,)
+    else:
+        allowed = _CEFR_ORDER[: _CEFR_ORDER.index(cefr_ceiling(session, user_id)) + 1]
     seen = select(ReviewLog.word_id).where(ReviewLog.user_id == user_id)
     stmt = select(Word.id).where(Word.cefr_level.in_(allowed), Word.id.not_in(seen))
     if topic is not None:
@@ -304,17 +403,21 @@ def build_session(
     minutes_available: int,
     topic: str | None,
     *,
+    level: CEFRLevel | None = None,
     as_of: dt.datetime | None = None,
 ) -> SessionPlan:
     """Compose a session: time-budget the minutes (``plan_budget``), then fill
     the review slots from due words and the new slots from ``select_new_words``.
 
     Review and new lists are disjoint by construction (a "new" word has no review
-    history). Deterministic for a fixed ``as_of``.
+    history). ``level`` pins the CEFR band for new words. Deterministic for a
+    fixed ``as_of``.
     """
     as_of = as_of or dt.datetime.now(dt.UTC)
     due = words_due_for_review(session, user_id, as_of)
-    new_candidates = select_new_words(session, user_id, topic, MAX_NEW_WORDS_PER_SESSION)
+    new_candidates = select_new_words(
+        session, user_id, topic, MAX_NEW_WORDS_PER_SESSION, level=level
+    )
 
     budget = plan_budget(
         minutes_available,
@@ -336,13 +439,14 @@ def create_learning_session(
     minutes_available: int,
     topic: str | None,
     *,
+    level: CEFRLevel | None = None,
     as_of: dt.datetime | None = None,
 ) -> SessionPlan:
     """``build_session`` plus a persisted ``sessions`` row; returns the plan with
     ``session_id`` populated. Raises ``LookupError`` for an unknown user."""
     if session.get(User, user_id) is None:
         raise LookupError(f"no user with id {user_id}")
-    plan = build_session(session, user_id, minutes_available, topic, as_of=as_of)
+    plan = build_session(session, user_id, minutes_available, topic, level=level, as_of=as_of)
     row = SessionRow(
         user_id=user_id,
         duration_minutes_requested=minutes_available,
@@ -374,9 +478,11 @@ __all__ = [
     "build_session",
     "cefr_ceiling",
     "create_learning_session",
+    "ensure_user_card_states",
     "get_card_state",
     "plan_budget",
     "quality_from_response",
+    "rebuild_user_card_states",
     "replay",
     "select_new_words",
     "sm2_update",

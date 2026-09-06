@@ -14,7 +14,9 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -74,6 +76,11 @@ class User(Base):
     target: Mapped[UserTarget] = mapped_column(
         Enum(UserTarget, name="user_target"), default=UserTarget.general
     )
+    # Optional lightweight identity. NULL for anonymous users (the agent, the
+    # simulator, tests): login is an extra way to reach a user_id, not a gate on
+    # the data layer. Set together by POST /auth/register.
+    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(256))
 
     review_logs: Mapped[list[ReviewLog]] = relationship(back_populates="user")
     sessions: Mapped[list[Session]] = relationship(back_populates="user")
@@ -91,9 +98,45 @@ class ReviewLog(Base):
     correct: Mapped[bool] = mapped_column(Boolean)
     response_time_ms: Mapped[int] = mapped_column(Integer)
     source: Mapped[ReviewSource] = mapped_column(Enum(ReviewSource, name="review_source"))
+    # Diagnostic label for an incorrect free-text answer (grading.ERROR_TYPES);
+    # NULL for correct answers and for self-graded swipes.
+    error_type: Mapped[str | None] = mapped_column(String(24))
 
     user: Mapped[User] = relationship(back_populates="review_logs")
     word: Mapped[Word] = relationship(back_populates="review_logs")
+
+
+class CardState(Base):
+    """Materialised SM-2 state per (user, word).
+
+    ``review_logs`` remains the append-only source of truth; this table is a
+    derived cache so hot reads (due list, weak list, dashboard) are indexed
+    look-ups instead of replaying every log in Python on each request. It is
+    updated incrementally by ``scheduler.update_after_review`` and can always be
+    rebuilt from the logs (``scheduler.rebuild_user_card_states``).
+    """
+
+    __tablename__ = "card_states"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    word_id: Mapped[int] = mapped_column(
+        ForeignKey("words.id", ondelete="CASCADE"), primary_key=True
+    )
+    repetitions: Mapped[int] = mapped_column(Integer, default=0)
+    ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
+    interval_days: Mapped[int] = mapped_column(Integer, default=0)
+    reviews: Mapped[int] = mapped_column(Integer, default=0)
+    correct_reviews: Mapped[int] = mapped_column(Integer, default=0)
+    last_reviewed: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Naive UTC (see scheduler._naive_utc) so SQLite/Postgres comparisons match.
+    due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (Index("ix_card_states_user_due", "user_id", "due_at"),)
 
 
 class Session(Base):

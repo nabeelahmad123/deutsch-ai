@@ -50,6 +50,15 @@ def test_select_new_words_n_zero_or_negative(session):
     assert select_new_words(session, 1, topic=None, n=-3) == []
 
 
+def test_explicit_level_pins_the_band_and_ignores_the_ceiling(session):
+    # a brand-new user's ceiling is A1, but an explicit B1 request gets B1 words
+    picked = select_new_words(session, 1, topic=None, n=5, level=CEFRLevel.B1)
+    assert picked == [21, 22, 23, 24, 25]  # B1 band, frequency-ordered
+
+    plan = build_session(session, 1, minutes_available=30, topic=None, level=CEFRLevel.B1, as_of=T0)
+    assert plan.new_word_ids and all(21 <= wid <= 30 for wid in plan.new_word_ids)
+
+
 def test_build_session_splits_budget_between_due_and_new(session):
     # Two due words: reviewed on day 0, due day 1; ask on day 5.
     for wid in (1, 2):
