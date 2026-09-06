@@ -22,7 +22,7 @@
    ┌─────────▼──────┐  ┌─────▼───────────┐                       │
    │ MCP server #1  │  │ MCP server #2   │  own process,         │
    │ learning_server│  │ secondary_server│  own transport (stdio │
-   │  9 tools +     │  │  notes vault    │  or streamable-http), │
+   │  11 tools +    │  │  notes vault    │  or streamable-http), │
    │  vocab://…     │  │  5 tools        │  no shared domain code│
    └─────────┬──────┘  └─────┬───────────┘                       │
       only path to     filesystem                                │
@@ -91,10 +91,18 @@ interleaves `learning.tool.*` and `notes.tool.*` with `agent.turn` between them.
 
 ```
 words(id, lemma, article, plural, translation_en, cefr_level, frequency_rank, topic, ipa_or_audio_ref)
-users(id, created_at, target)                        -- target: work / travel / general / exam
-review_logs(id, user_id, word_id, timestamp, correct, response_time_ms, source: "review" | "new")
+users(id, created_at, target, username, password_hash)   -- target: work / travel / general / exam
+review_logs(id, user_id, word_id, timestamp, correct, response_time_ms, source, error_type)  -- error_type: diagnostic label on a wrong free-text answer
+card_states(user_id, word_id, repetitions, ease_factor, interval_days, reviews, correct_reviews,
+            last_reviewed, due_at)                        -- derived cache, see below
 sessions(id, user_id, started_at, duration_minutes_requested, words_covered, topic)
 ```
+
+`review_logs` is the append-only source of truth. `card_states` is a **derived
+cache** of each card's SM-2 state, updated incrementally by
+`scheduler.update_after_review` and rebuildable from the logs at any time
+(`rebuild_user_card_states`); it turns the due-list / weak-list / dashboard reads
+into indexed look-ups instead of replaying every log in Python per request.
 
 Schema is owned by Alembic (`backend/db/migrations/`); `seed.sql` is data-only.
 CEFR level is *approximated* from frequency band, and topic from a gloss-keyword
