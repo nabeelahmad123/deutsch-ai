@@ -1,0 +1,95 @@
+name: CD
+
+# Push to main -> run the full CI suite -> build & push the image to GHCR ->
+# deploy it to the droplet over SSH -> health-check. Manual re-run via the
+# "Run workflow" button (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/nabeelahmad123/deutsch-ai
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build-push:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep the server's copy of the compose file + Caddyfile in sync with the
+      # repo. The hand-written .env on the server is untouched.
+      - name: Sync deploy files to the droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "deploy/docker-compose.prod.yml,deploy/Caddyfile"
+          target: "/opt/learn-german"
+          strip_components: 1
+
+      - name: Pull the new image and restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd /opt/learn-german
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            export IMAGE=${{ env.IMAGE_NAME }}:${{ github.sha }}
+            docker compose -f docker-compose.prod.yml --env-file .env pull
+            docker compose -f docker-compose.prod.yml --env-file .env up -d
+            docker image prune -f
+            # First deploy has to migrate + seed ~4k words, so poll for a while.
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:8000/health; then
+                echo "backend healthy"; exit 0
+              fi
+              echo "waiting for backend ($i/30)"; sleep 5
+            done
+            echo "backend did not become healthy" >&2
+            docker compose -f docker-compose.prod.yml logs --tail=50 backend >&2
+            exit 1
