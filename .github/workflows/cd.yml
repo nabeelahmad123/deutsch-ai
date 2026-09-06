@@ -83,13 +83,17 @@ jobs:
             docker compose -f docker-compose.prod.yml --env-file .env pull
             docker compose -f docker-compose.prod.yml --env-file .env up -d
             docker image prune -f
-            # First deploy has to migrate + seed ~4k words, so poll for a while.
-            for i in $(seq 1 30); do
+            # The first deploy pulls a ~500 MB image, runs initdb + migrations,
+            # and seeds ~4k words -- that can take several minutes on a 1 GB box.
+            # Later deploys are fast (cached layers, persistent DB volume, seed is
+            # idempotent), so this generous window costs nothing in the common case.
+            for i in $(seq 1 90); do
               if curl -fsS http://localhost:8000/health; then
-                echo "backend healthy"; exit 0
+                echo "backend healthy after $((i*5))s"; exit 0
               fi
-              echo "waiting for backend ($i/30)"; sleep 5
+              echo "waiting for backend ($i/90)"; sleep 5
             done
             echo "backend did not become healthy" >&2
-            docker compose -f docker-compose.prod.yml logs --tail=50 backend >&2
+            docker compose -f docker-compose.prod.yml --env-file .env ps >&2
+            docker compose -f docker-compose.prod.yml --env-file .env logs --tail=100 backend >&2
             exit 1
