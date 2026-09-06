@@ -1,0 +1,106 @@
+name: learn-german
+
+# Production stack. Unlike ../docker-compose.yml this does NOT build -- it pulls
+# the image that .github/workflows/cd.yml built and pushed to GHCR. Same four
+# app services as dev, plus Caddy terminating TLS in front of the API.
+#
+# On the server this file lives at /opt/learn-german/docker-compose.prod.yml
+# (copied there by the CD workflow). Secrets come from a hand-written
+# /opt/learn-german/.env -- see deploy/env.example.
+
+x-image: &image ${IMAGE:-ghcr.io/nabeelahmad123/deutsch-ai:latest}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-german}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-german}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-german} -d ${POSTGRES_DB:-german}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    image: *image
+    # Migrate + seed (both idempotent) on every start, then serve the API and
+    # the static SPA at / on :8000.
+    command: >
+      sh -c "alembic upgrade head
+      && python -m backend.db.seed --skip-migrate
+      && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-german}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-*}
+      FRONTEND_DIR: /app/frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  learning-mcp:
+    image: *image
+    command: python -m backend.mcp_servers.learning_server
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-german}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-german}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      LEARNING_MCP_TRANSPORT: streamable-http
+      LEARNING_MCP_HOST: 0.0.0.0
+      LEARNING_MCP_PORT: "8100"
+    # Internal only -- reachable on the compose network as learning-mcp:8100,
+    # not published to the internet.
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  secondary-mcp:
+    image: *image
+    command: python -m backend.mcp_servers.secondary_server
+    environment:
+      SECONDARY_MCP_KIND: notes
+      SECONDARY_MCP_TRANSPORT: streamable-http
+      SECONDARY_MCP_HOST: 0.0.0.0
+      SECONDARY_MCP_PORT: "8101"
+      NOTES_VAULT_DIR: /vault
+    volumes:
+      - vault:/vault
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # ":80" = plain HTTP on the droplet IP (default).
+      # "<ip>.nip.io" or a real domain = Caddy auto-provisions a Let's Encrypt cert.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  vault:
+  caddy_data:
+  caddy_config:

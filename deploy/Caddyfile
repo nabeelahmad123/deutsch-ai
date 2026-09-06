@@ -1,0 +1,12 @@
+# Caddy reverse-proxies the API (which also serves the SPA at /).
+#
+# SITE_ADDRESS is set from the environment (see docker-compose.prod.yml):
+#   :80                      -> plain HTTP, no certificate (fine to start)
+#   159.223.226.180.nip.io   -> automatic HTTPS via Let's Encrypt, no domain needed
+#   deutsch.example.com      -> automatic HTTPS for your real domain
+#                               (point an A record at the droplet first)
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy backend:8000
+}

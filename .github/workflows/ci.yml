@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call: # lets CD reuse this whole suite as a gate before deploying
 
 jobs:
   # The deterministic core, with a minimal dependency set and no agent/LLM/MCP
