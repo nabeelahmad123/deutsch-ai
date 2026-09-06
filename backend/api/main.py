@@ -177,10 +177,25 @@ def list_review_logs(
 
 
 # --- static frontend --------------------------------------------------------
-# Serve the minimal frontend from this app so the demo is a single origin: no
-# separate static server, no port juggling, no CORS. `?api=` still overrides the
-# base URL (used when the page is hosted elsewhere -- e.g. behind nginx). Mounted
-# last so every explicit API route above takes precedence over the catch-all.
-_FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
-if _FRONTEND_DIR.is_dir():
+# Serve the SPA from this app so it is a single origin: no separate static
+# server, no CORS. `?api=` still overrides the base URL when hosted elsewhere.
+# Mounted last so every explicit API route above takes precedence.
+#
+# Location: $FRONTEND_DIR, else the repo checkout (dev), else ./frontend relative
+# to the working dir (the Docker image installs `backend` but keeps the source
+# tree at /app, so __file__ may point into site-packages).
+def _find_frontend() -> Path | None:
+    candidates = [
+        os.environ.get("FRONTEND_DIR"),
+        Path(__file__).resolve().parents[2] / "frontend",
+        Path.cwd() / "frontend",
+    ]
+    for c in candidates:
+        if c and Path(c).is_dir():
+            return Path(c)
+    return None
+
+
+_FRONTEND_DIR = _find_frontend()
+if _FRONTEND_DIR is not None:
     app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

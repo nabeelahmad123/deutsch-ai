@@ -8,6 +8,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md alembic.ini ./
 COPY backend ./backend
+COPY frontend ./frontend
 RUN pip install --upgrade pip && pip install ".[agent]"
 
 EXPOSE 8000 8100 8101
