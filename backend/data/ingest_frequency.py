@@ -31,7 +31,11 @@ from pathlib import Path
 BUILD_DIR = Path(__file__).parent / "build"
 RAW_DIR = Path(__file__).parent / "raw"
 
-DEFAULT_TOP_N = 4000
+# ~7,500 raw tokens so that, after function words / grammatical-only entries and
+# lemmas with no Wiktionary entry are filtered out (build_seed.iter_study_words),
+# ~4,000 study words remain -- exactly enough to fill the A1-B2 bands (CLAUDE.md
+# section 6: 500 / 1000 / 1500 / 1000).
+DEFAULT_TOP_N = 7500
 
 # A valid German word token: starts and ends with a letter, letters + interior
 # hyphen only, length >= 2. Excludes punctuation, digits, initials, abbreviations.

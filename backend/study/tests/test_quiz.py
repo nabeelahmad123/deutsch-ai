@@ -7,10 +7,42 @@ from backend.study.quiz import (
     build_question,
     decode_qid,
     encode_qid,
+    short_gloss,
 )
 
 NOUN = WordView(1, "Haus", "das", "Häuser", "house", "A1", "home", "haʊ̯s")
 VERB = WordView(2, "gehen", None, None, "to go", "A1", None, "ˈɡeːən")
+VERBOSE = WordView(
+    3,
+    "Deutschland",
+    None,
+    None,
+    "Germany (a nation or civilization occupying the country around the Rhine)",
+    "A1",
+    None,
+    "ˈdɔʏtʃlant",
+)
+
+
+@pytest.mark.parametrize(
+    ("full", "expected"),
+    [
+        ("more", "more"),
+        ("police; law enforcement", "police"),
+        ("again; indicates that the action taking place has happened before", "again"),
+        ("Germany (a nation or civilization occupying the country around the Rhine)", "Germany"),
+        ("hours, o'clock (indicates the time within a period)", "hours, o'clock"),
+        ("", ""),
+    ],
+)
+def test_short_gloss(full, expected):
+    assert short_gloss(full) == expected
+
+
+def test_en_to_de_prompt_uses_the_primary_sense_but_answer_is_the_lemma():
+    q = build_question(VERBOSE, "en_to_de")
+    assert q.prompt == "Translate to German: Germany"
+    assert decode_qid(q.question_id)["r"] == "Deutschland"
 
 
 def test_qid_roundtrips():

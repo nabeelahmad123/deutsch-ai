@@ -18,9 +18,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select
 
-from backend.data.assign_cefr import assign_cefr
+from backend.data import build_seed
 from backend.data.assign_topic import assign_topic
-from backend.data.build_seed import is_function_word, is_grammatical_gloss
 from backend.db.models import User, Word
 from backend.db.session import get_engine, resolve_url, session_scope
 
@@ -36,14 +35,10 @@ def upgrade_to_head() -> None:
 
 
 def _word_rows_from_jsonl(path: Path) -> list[dict]:
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     rows: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        rec = json.loads(line)
-        cefr = assign_cefr(rec["frequency_rank"])
-        if cefr is None:
-            continue
-        if is_function_word(rec["lemma"]) or is_grammatical_gloss(rec.get("translation_en", "")):
-            continue  # same filter build_seed.py applies to seed.sql
+    # Same filter + post-filter CEFR banding build_seed.py bakes into seed.sql.
+    for rec, cefr in build_seed.iter_study_words(records):
         rows.append(
             {
                 "lemma": rec["lemma"],
@@ -67,7 +62,9 @@ def seed_from_jsonl(path: Path) -> tuple[int, int]:
         if fresh:
             session.bulk_insert_mappings(Word, fresh)
         if session.scalar(select(func.count()).select_from(User)) == 0:
-            session.add(User(target="work"))
+            # Demo learner: username 'demo', password 'demo' (fixed fixture hash,
+            # matching the committed seed.sql).
+            session.add(User(target="work", username="demo", password_hash=build_seed.DEMO_PW_HASH))
     return len(fresh), len(rows)
 
 

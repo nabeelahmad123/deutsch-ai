@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from backend.data.assign_cefr import assign_cefr
@@ -81,6 +82,14 @@ HEADER = (
     "backend/db/migrations/).\n"
 )
 
+# Fixed scrypt hash of the password "demo" (see backend/api/security.py). A
+# committed seed can't use a random salt, so the demo login uses this constant.
+# It is a throwaway fixture credential, not a secret.
+DEMO_PW_HASH = (
+    "scrypt$16384$8$1$2e6fe4056da89da43570bd3bd3b7a6c2$"
+    "6003f793b1948c2161289eea192d84f8abc791b4428d97d675b90f2621bfda11"
+)
+
 COLUMNS = (
     "(lemma, article, plural, translation_en, cefr_level, frequency_rank, topic, ipa_or_audio_ref)"
 )
@@ -92,28 +101,50 @@ def _sql_str(value: str | None) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def is_study_word(rec: dict) -> bool:
+    """A record worth putting on a flashcard: not a function word, not a bare
+    grammatical inflection."""
+    return not (
+        is_function_word(rec["lemma"]) or is_grammatical_gloss(rec.get("translation_en", ""))
+    )
+
+
+def iter_study_words(records: Iterable[dict]) -> Iterator[tuple[dict, str]]:
+    """Yield ``(record, cefr_level)`` for each keepable word, in input order.
+
+    ``records`` must be frequency-ordered. CEFR is assigned from the word's rank
+    *among study words* -- i.e. after function/grammatical entries are dropped --
+    so "A1" means "the ~500 most frequent words actually worth learning", not
+    "the top 500 corpus tokens" (which are mostly der/die/und/ist/...). Stops at
+    the first word past the B2 boundary; everything rarer is out of scope.
+    """
+    study_rank = 0
+    for rec in records:
+        if not is_study_word(rec):
+            continue
+        study_rank += 1
+        cefr = assign_cefr(study_rank)
+        if cefr is None:
+            return
+        yield rec, cefr
+
+
 def build() -> str:
     words_path = BUILD_DIR / "words.jsonl"
     if not words_path.exists():
         raise SystemExit(f"missing {words_path}; run ingest_frequency then ingest_wiktionary first")
 
+    records = [json.loads(line) for line in words_path.read_text(encoding="utf-8").splitlines()]
+    skipped_function = sum(1 for r in records if is_function_word(r["lemma"]))
+    skipped_grammatical = sum(
+        1
+        for r in records
+        if not is_function_word(r["lemma"]) and is_grammatical_gloss(r.get("translation_en", ""))
+    )
+
     rows: list[str] = []
-    skipped_out_of_scope = 0
-    skipped_grammatical = 0
-    skipped_function = 0
     topic_hits = 0
-    for line in words_path.read_text(encoding="utf-8").splitlines():
-        rec = json.loads(line)
-        cefr = assign_cefr(rec["frequency_rank"])
-        if cefr is None:  # rank > 4000: out of A1-B2 scope (section 6)
-            skipped_out_of_scope += 1
-            continue
-        if is_function_word(rec["lemma"]):
-            skipped_function += 1
-            continue
-        if is_grammatical_gloss(rec.get("translation_en", "")):
-            skipped_grammatical += 1
-            continue
+    for rec, cefr in iter_study_words(records):
         topic = rec.get("topic") or assign_topic(rec.get("translation_en"), rec.get("lemma"))
         if topic:
             topic_hits += 1
@@ -125,16 +156,20 @@ def build() -> str:
             f"{_sql_str(rec.get('ipa_or_audio_ref'))})"
         )
 
+    skipped_out_of_scope = len(records) - skipped_function - skipped_grammatical - len(rows)
     parts = [
         HEADER,
         f"INSERT INTO words\n  {COLUMNS}\nVALUES",
         ",\n".join(rows) + "\nON CONFLICT (lemma) DO NOTHING;\n",
         "-- A demo learner (id 1 on a fresh DB) so the API/MCP layers have a target.",
-        "INSERT INTO users (target) SELECT 'work' " "WHERE NOT EXISTS (SELECT 1 FROM users);",
+        "-- Login: username 'demo', password 'demo' (fixed scrypt hash -- demo fixture only).",
+        "INSERT INTO users (target, username, password_hash)\n"
+        f"  SELECT 'work', 'demo', '{DEMO_PW_HASH}'\n"
+        "  WHERE NOT EXISTS (SELECT 1 FROM users);",
         "",
-        f"-- {len(rows)} words, {topic_hits} topic-tagged. Skipped: "
-        f"{skipped_out_of_scope} (rank > 4000), {skipped_function} (function word), "
-        f"{skipped_grammatical} (grammatical gloss).",
+        f"-- {len(rows)} study words (CEFR by post-filter rank), {topic_hits} topic-tagged. "
+        f"Dropped: {skipped_function} function words, {skipped_grammatical} grammatical entries, "
+        f"{skipped_out_of_scope} past the B2 boundary.",
         "",
     ]
     return "\n".join(parts)

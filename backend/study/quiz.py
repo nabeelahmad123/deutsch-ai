@@ -12,12 +12,31 @@ import base64
 import binascii
 import json
 import random
+import re
 from dataclasses import dataclass
 
 from backend.core.read_models import WordView
 
 QUIZ_TYPES: tuple[str, ...] = ("en_to_de", "de_to_en", "multiple_choice", "article")
 _QID_PREFIX = "q1:"
+
+# Wiktionary glosses often carry the whole dictionary entry -- multiple senses
+# separated by ``;`` and long parenthetical notes ("Germany (a nation or
+# civilization occupying the country around the Rhine ...)"). For a flashcard we
+# want the primary sense only. The full gloss stays in the DB and the /words API.
+_GLOSS_PAREN = re.compile(r"\s*\([^()]*\)\s*$")
+_GLOSS_MAX = 60
+
+
+def short_gloss(translation_en: str) -> str:
+    """The primary sense of a gloss: first ``;``-clause, trailing note dropped."""
+    text = (translation_en or "").split(";", 1)[0].strip()
+    text = _GLOSS_PAREN.sub("", text).strip()
+    if len(text) < 2 or len(text) > _GLOSS_MAX:
+        # a single over-long sense with no ';' -- fall back to a hard clip
+        clipped = (text or (translation_en or "")).strip()
+        return clipped[:_GLOSS_MAX].rstrip(" ,") if len(clipped) > _GLOSS_MAX else clipped
+    return text
 
 
 @dataclass(frozen=True)
@@ -59,17 +78,18 @@ def build_question(
     if quiz_type not in QUIZ_TYPES:
         raise ValueError(f"unknown quiz_type {quiz_type!r}")
 
+    gloss = short_gloss(word.translation_en)
     options: list[str] | None = None
     if quiz_type == "article":
         if not word.article:
             return None
         reference = word.article
-        prompt = f"Which article completes: ___ {word.lemma}? ({word.translation_en})"
+        prompt = f"Which article completes: ___ {word.lemma}? ({gloss})"
         options = ["der", "die", "das"]
         hint = word.cefr_level
     elif quiz_type == "en_to_de":
         reference = word.lemma
-        prompt = f"Translate to German: {word.translation_en}"
+        prompt = f"Translate to German: {gloss}"
         hint = f"{word.cefr_level}, starts with '{word.lemma[:1]}'"
     elif quiz_type == "de_to_en":
         reference = word.translation_en
@@ -77,8 +97,10 @@ def build_question(
         prompt = f"Translate to English: {shown}"
         hint = word.cefr_level
     else:  # multiple_choice
-        reference = word.translation_en
-        options = _deterministic_shuffle([reference, *(distractors or [])[:3]], seed=word.id)
+        reference = gloss
+        options = _deterministic_shuffle(
+            [reference, *(short_gloss(d) for d in (distractors or [])[:3])], seed=word.id
+        )
         prompt = f"What does '{word.lemma}' mean?"
         hint = word.cefr_level
 
