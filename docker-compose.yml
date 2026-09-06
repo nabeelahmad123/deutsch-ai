@@ -35,7 +35,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       FRONTEND_DIR: /app/frontend
     ports:
-      - "8000:8000"
+      - "${WEB_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +57,7 @@ services:
       LEARNING_MCP_HOST: 0.0.0.0
       LEARNING_MCP_PORT: "8100"
     ports:
-      - "8100:8100"
+      - "${LEARNING_MCP_PUBLIC_PORT:-8100}:8100"
     depends_on:
       backend:
         condition: service_healthy  # backend runs the migrations + seed
@@ -74,7 +74,7 @@ services:
       SECONDARY_MCP_PORT: "8101"
       NOTES_VAULT_DIR: /vault
     ports:
-      - "8101:8101"
+      - "${SECONDARY_MCP_PUBLIC_PORT:-8101}:8101"
     volumes:
       - vault:/vault
 

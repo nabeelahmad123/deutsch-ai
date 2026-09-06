@@ -6,11 +6,12 @@ day with the previous day red.
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Status: all 20 tickets `[x]` — every build-order step complete.** The only
-Definition-of-Done item not verified in this environment is `docker compose up`
-against a live Docker daemon (the daemon is unavailable here); the compose config
-validates and every container command runs standalone. 554 tests pass + 2
-skipped (real-API agent tests, run with `ANTHROPIC_API_KEY` set).
+**Status: all 20 tickets `[x]` — every build-order step complete.**
+`docker compose up` is verified end-to-end against a live daemon (Colima):
+migrations 0001–0004 + the 4,000-word seed load into containerised Postgres, the
+SPA + API serve on `${WEB_PORT}`, `/auth/login` works, and both MCP servers
+answer a real streamable-http `initialize` handshake. 611 tests pass + 2 skipped
+(real-API agent tests, run with `ANTHROPIC_API_KEY` set).
 
 ---
 

@@ -73,7 +73,7 @@ docker compose up             # Postgres + backend (migrates + seeds, serves the
                               # frontend at /) + both MCP servers
 ```
 
-- App: <http://localhost:8000/> (log in with **demo / demo**)
+- App: <http://localhost:8000/> (log in with **demo / demo**; set `WEB_PORT` in `.env` if 8000 is taken)
 - API + Swagger: <http://localhost:8000/docs>
 - MCP server #1: `http://localhost:8100/mcp` · server #2: `http://localhost:8101/mcp`
 
@@ -81,7 +81,7 @@ docker compose up             # Postgres + backend (migrates + seeds, serves the
 
 ```bash
 uv sync --extra dev --extra agent          # Python 3.12 project env
-uv run pytest                              # ~595 tests
+uv run pytest                              # 611 tests
 
 # a local SQLite DB instead of Postgres:
 export DATABASE_URL="sqlite+pysqlite:///local.db"
@@ -129,7 +129,7 @@ hangs).
   `backend/core`, `backend/data`, `backend/db`, `backend/learner_model`,
   `backend/study` with `--cov-fail-under=90` on `backend.core`, plus ruff +
   black. `test_import_purity.py` asserts the core imports nothing LLM/HTTP.
-- **full** — installs everything, runs the whole suite (~595 tests).
+- **full** — installs everything, runs the whole suite (611 tests).
 
 ## Build order
 
