@@ -1,6 +1,6 @@
 # `docker compose up` brings up the whole system: Postgres, the backend (which
-# migrates + seeds on startup), both MCP servers over streamable-http, and the
-# static frontend. See README.md and docs/ARCHITECTURE.md.
+# migrates + seeds on startup, and serves the static frontend at / on port 8000),
+# and both MCP servers over streamable-http. See README.md and docs/ARCHITECTURE.md.
 name: learn-german
 
 services:
@@ -77,14 +77,8 @@ services:
     volumes:
       - vault:/vault
 
-  frontend:
-    image: nginx:alpine
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
+  # The frontend is served by the backend itself (StaticFiles mount at /), so
+  # there is no separate web server here -- open http://localhost:8000/ .
 
 volumes:
   pgdata:

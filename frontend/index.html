@@ -2,144 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>learn-german — vocabulary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)" />
+  <meta name="description" content="learn-german — an adaptive spaced-repetition vocabulary trainer." />
+  <title>learn-german</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='23' font-size='15' font-family='system-ui,sans-serif' font-weight='700' fill='white' text-anchor='middle'%3ELG%3C/text%3E%3C/svg%3E" />
+
   <style>
-    :root { --fg: #1a1a1a; --dim: #666; --line: #e2e2e2; --accent: #2d6cdf; --bg: #fafafa; }
-    * { box-sizing: border-box; }
-    body { font: 14px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg);
-           margin: 0; padding: 1.5rem; max-width: 60rem; margin: 0 auto; }
-    h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
-    .sub { color: var(--dim); margin: 0 0 1rem; }
-    .stats { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    .stat { background: #fff; border: 1px solid var(--line); border-radius: 6px;
-            padding: .4rem .7rem; }
-    .stat b { font-size: 1.1rem; }
-    .chips { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px;
-            padding: .15rem .6rem; cursor: pointer; font-size: 12px; }
-    .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .filters { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
-    select, input { font: inherit; padding: .35rem .5rem; border: 1px solid var(--line);
-                    border-radius: 6px; background: #fff; }
-    input[type=search] { flex: 1; min-width: 10rem; }
-    table { width: 100%; border-collapse: collapse; background: #fff;
-            border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-    th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
-    th { background: #f2f2f2; font-weight: 600; }
-    tr:last-child td { border-bottom: 0; }
-    .rank { color: var(--dim); font-variant-numeric: tabular-nums; }
-    .art { color: var(--accent); }
-    .lvl { font-size: 11px; background: #eef; border-radius: 4px; padding: 0 .3rem; }
-    .pager { display: flex; gap: .5rem; align-items: center; margin-top: .75rem; }
-    button { font: inherit; padding: .3rem .7rem; border: 1px solid var(--line);
-             border-radius: 6px; background: #fff; cursor: pointer; }
-    button:disabled { opacity: .4; cursor: default; }
-    .err { color: #b00; }
+    /* first-paint boot state — before app.js swaps the body */
+    .boot { min-height:100dvh; display:grid; place-items:center; gap:14px; }
+    .boot .logo {
+      width:44px; height:44px; border-radius:13px; display:grid; place-items:center;
+      color:#fff; font:700 16px/1 system-ui,sans-serif; letter-spacing:.02em;
+      background:linear-gradient(145deg,#5b5bd6,#4338ca);
+      animation:boot-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes boot-pulse { 0%,100% { opacity:.55; transform:scale(.96); } 50% { opacity:1; transform:scale(1); } }
+    .boot p { color:#8a91a0; font:500 13px/1 system-ui,sans-serif; }
+    @media (prefers-reduced-motion: reduce) { .boot .logo { animation:none; } }
   </style>
 </head>
 <body>
-  <h1>learn-german</h1>
-  <p class="sub">
-    Vocabulary browser over the FastAPI data layer &nbsp;·&nbsp;
-    <a id="studylink" href="study.html">study a session →</a> &nbsp;·&nbsp;
-    backend health: <code id="health">checking…</code>
-  </p>
-
-  <div class="stats" id="stats"></div>
-  <div class="chips" id="topics"></div>
-
-  <div class="filters">
-    <select id="cefr">
-      <option value="">All levels</option>
-      <option>A1</option><option>A2</option><option>B1</option><option>B2</option>
-    </select>
-    <input type="search" id="q" placeholder="lemma starts with…" />
+  <div class="boot">
+    <div class="logo">LG</div>
+    <p>learn-german</p>
   </div>
-
-  <table>
-    <thead>
-      <tr><th>#</th><th>Word</th><th>Plural</th><th>English</th><th>Level</th><th>Topic</th><th>IPA</th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
-
-  <div class="pager">
-    <button id="prev">‹ Prev</button>
-    <span id="range"></span>
-    <button id="next">Next ›</button>
-  </div>
-
-  <script>
-    const API = new URLSearchParams(location.search).get("api") || "http://localhost:8000";
-    document.getElementById("studylink").href = "study.html?api=" + encodeURIComponent(API);
-    const LIMIT = 25;
-    let offset = 0, topic = "", total = 0;
-
-    const $ = (id) => document.getElementById(id);
-    const esc = (s) => (s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-
-    async function j(path) {
-      const r = await fetch(API + path);
-      if (!r.ok) throw new Error(path + " → " + r.status);
-      return r.json();
-    }
-
-    async function boot() {
-      try {
-        $("health").textContent = (await j("/health")).status;
-      } catch { $("health").textContent = "unreachable"; $("health").className = "err"; return; }
-
-      const t = await j("/topics");
-      $("topics").innerHTML =
-        `<span class="chip${topic ? "" : " on"}" data-t="">all topics</span>` +
-        t.map((x) => `<span class="chip" data-t="${esc(x.topic)}">${esc(x.topic)} · ${x.count}</span>`).join("");
-      $("topics").onclick = (e) => {
-        const c = e.target.closest(".chip"); if (!c) return;
-        topic = c.dataset.t; offset = 0;
-        [...$("topics").children].forEach((el) => el.classList.toggle("on", el.dataset.t === topic));
-        load();
-      };
-
-      const counts = {};
-      for (const lv of ["A1", "A2", "B1", "B2"]) counts[lv] = (await j("/words?cefr_level=" + lv + "&limit=1")).total;
-      const grand = (await j("/words?limit=1")).total;
-      $("stats").innerHTML =
-        `<div class="stat"><b>${grand}</b> words</div>` +
-        Object.entries(counts).map(([k, v]) => `<div class="stat">${k} <b>${v}</b></div>`).join("");
-
-      load();
-    }
-
-    async function load() {
-      const p = new URLSearchParams({ limit: LIMIT, offset });
-      if ($("cefr").value) p.set("cefr_level", $("cefr").value);
-      if (topic) p.set("topic", topic);
-      if ($("q").value.trim()) p.set("q", $("q").value.trim());
-      let data;
-      try { data = await j("/words?" + p); }
-      catch (e) { $("rows").innerHTML = `<tr><td colspan="7" class="err">${esc(e.message)}</td></tr>`; return; }
-      total = data.total;
-      $("rows").innerHTML = data.items.map((w) => `
-        <tr>
-          <td class="rank">${w.frequency_rank}</td>
-          <td>${w.article ? `<span class="art">${w.article}</span> ` : ""}<b>${esc(w.lemma)}</b></td>
-          <td>${esc(w.plural) || "—"}</td>
-          <td>${esc(w.translation_en)}</td>
-          <td><span class="lvl">${w.cefr_level}</span></td>
-          <td>${esc(w.topic) || "—"}</td>
-          <td>${esc(w.ipa_or_audio_ref) || "—"}</td>
-        </tr>`).join("") || `<tr><td colspan="7">no matches</td></tr>`;
-      $("range").textContent = total ? `${offset + 1}–${Math.min(offset + LIMIT, total)} of ${total}` : "0";
-      $("prev").disabled = offset === 0;
-      $("next").disabled = offset + LIMIT >= total;
-    }
-
-    $("cefr").onchange = () => { offset = 0; load(); };
-    $("q").oninput = () => { offset = 0; load(); };
-    $("prev").onclick = () => { offset = Math.max(0, offset - LIMIT); load(); };
-    $("next").onclick = () => { offset += LIMIT; load(); };
-    boot();
-  </script>
+  <noscript><p style="text-align:center;font:14px system-ui;padding:2rem">This app needs JavaScript enabled.</p></noscript>
+  <script src="app.js"></script>
 </body>
 </html>
