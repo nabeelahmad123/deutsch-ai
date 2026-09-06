@@ -6,6 +6,7 @@ import pytest
 
 from backend.study.grading import (
     GradeResult,
+    diagnose,
     fuzzy_match,
     grade,
     normalize,
@@ -58,6 +59,63 @@ def test_grade_de_to_en_falls_back_to_fuzzy_without_credentials(monkeypatch):
     r = grade("de_to_en", "house", "house")
     assert r.method == "semantic_fallback_fuzzy"
     assert r.correct is True  # fuzzy still matches
+
+
+def test_diagnose_correct_answer_has_no_error():
+    d = diagnose("en_to_de", "Haus", "Haus", correct=True)
+    assert d.error_type is None and d.feedback == ""
+
+
+def test_diagnose_blank():
+    assert diagnose("en_to_de", "Haus", "   ", correct=False).error_type == "blank"
+
+
+def test_diagnose_article_quiz_is_always_gender():
+    d = diagnose("article", "das", "der", correct=False)
+    assert d.error_type == "wrong_gender" and "das" in d.feedback
+
+
+def test_diagnose_en_to_de_wrong_article():
+    d = diagnose("en_to_de", "Haus", "der Haus", correct=False, article="das")
+    assert d.error_type == "wrong_gender" and "das Haus" in d.feedback
+
+
+def test_diagnose_en_to_de_plural_for_singular():
+    d = diagnose("en_to_de", "Haus", "Häuser", correct=False, article="das", plural="Häuser")
+    assert d.error_type == "wrong_plural"
+
+
+def test_diagnose_en_to_de_spelling_near_miss():
+    d = diagnose("en_to_de", "Wetter", "Weter", correct=False)
+    assert d.error_type == "spelling"
+
+
+def test_diagnose_wrong_word_falls_back_without_credentials(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1")
+    d = diagnose("en_to_de", "Haus", "Auto", correct=False)
+    assert d.error_type == "other" and d.method == "semantic_fallback"
+
+
+def test_diagnose_uses_supplied_client_for_meaning_errors():
+    @dataclass
+    class _Block:
+        type: str
+        text: str
+
+    class _Msg:
+        content = [
+            _Block("text", '{"error_type": "false_friend", "feedback": "gift means poison"}')
+        ]
+
+    class _FakeClient:
+        class messages:  # noqa: N801
+            @staticmethod
+            def create(**kwargs):
+                return _Msg()
+
+    d = diagnose("de_to_en", "poison", "present", correct=False, client=_FakeClient())
+    assert d.error_type == "false_friend" and d.method == "semantic"
 
 
 def test_grade_de_to_en_uses_semantic_client_when_supplied():

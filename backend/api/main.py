@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.api.auth import router as auth_router
 from backend.api.schemas import (
     ReviewLogIn,
     ReviewLogOut,
@@ -31,6 +34,7 @@ from backend.db.models import CEFRLevel, ReviewLog, User, Word
 from backend.db.session import get_session
 
 app = FastAPI(title="learn-german backend", version="0.1.0")
+app.include_router(auth_router)
 app.include_router(study_router)
 
 # The minimal frontend (a static page) calls this API from the browser. Origins
@@ -170,3 +174,13 @@ def list_review_logs(
         .limit(limit)
     )
     return list(session.scalars(stmt))
+
+
+# --- static frontend --------------------------------------------------------
+# Serve the minimal frontend from this app so the demo is a single origin: no
+# separate static server, no port juggling, no CORS. `?api=` still overrides the
+# base URL (used when the page is hosted elsewhere -- e.g. behind nginx). Mounted
+# last so every explicit API route above takes precedence over the catch-all.
+_FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+if _FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

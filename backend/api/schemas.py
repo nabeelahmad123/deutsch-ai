@@ -48,6 +48,28 @@ class UserOut(BaseModel):
     id: int
     created_at: dt.datetime
     target: UserTarget
+    username: str | None = None
+
+
+_USERNAME = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class RegisterIn(BaseModel):
+    username: str = _USERNAME
+    password: str = Field(min_length=4, max_length=128)
+    target: UserTarget = UserTarget.general
+
+
+class LoginIn(BaseModel):
+    username: str = _USERNAME
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    username: str
+    target: UserTarget
 
 
 class ReviewLogIn(BaseModel):
@@ -67,6 +89,7 @@ class ReviewLogOut(BaseModel):
     correct: bool
     response_time_ms: int
     source: ReviewSource
+    error_type: str | None = None
 
 
 # --- study flow (minimal frontend, CLAUDE.md section 13) --------------------
@@ -76,6 +99,7 @@ class SessionIn(BaseModel):
     user_id: int
     minutes_available: int = Field(ge=1, le=120)
     topic: str | None = None
+    cefr_level: CEFRLevel | None = None  # pin new words to one band; None = auto
 
 
 class SessionOut(BaseModel):
@@ -115,6 +139,64 @@ class AnswerOut(BaseModel):
     rationale: str
     expected: str
     method: str
+    error_type: str | None = None  # why it was wrong (grading.ERROR_TYPES)
+    feedback: str = ""  # one learner-facing sentence
+    new_state: dict
+
+
+class ConversationIn(BaseModel):
+    user_id: int
+    scenario: str = Field(min_length=2, max_length=40)
+    minutes: int = Field(default=10, ge=1, le=60)
+
+
+class ConversationStartOut(BaseModel):
+    session_id: int
+    scenario: str
+    level: str
+    opener: str
+    targets: list[dict]
+
+
+class ConvMessage(BaseModel):
+    role: str = Field(pattern=r"^(user|assistant)$")
+    content: str = Field(max_length=4000)
+
+
+class TurnIn(BaseModel):
+    session_id: int
+    user_id: int
+    scenario: str = Field(min_length=2, max_length=40)
+    target_word_ids: list[int] = Field(min_length=1, max_length=15)
+    history: list[ConvMessage] = Field(default_factory=list, max_length=40)
+    user_message: str = Field(min_length=1, max_length=2000)
+
+
+class TurnOut(BaseModel):
+    reply: str
+    used_word_ids: list[int]
+    available: bool
+
+
+class ConvFinishIn(BaseModel):
+    session_id: int
+    user_id: int
+    used_word_ids: list[int] = Field(default_factory=list, max_length=15)
+    turns: int = Field(ge=0, le=200)
+
+
+class ReviewIn(BaseModel):
+    """A self-graded flashcard outcome (the swipe deck has no typed answer)."""
+
+    user_id: int
+    word_id: int
+    correct: bool
+    response_time_ms: int = Field(default=5000, ge=0, le=600_000)
+
+
+class ReviewOut(BaseModel):
+    word_id: int
+    correct: bool
     new_state: dict
 
 
@@ -130,5 +212,6 @@ class ProgressOut(BaseModel):
     words_seen: int
     words_due_now: int
     overall_accuracy: float | None
+    by_level: list[dict]  # per CEFR band: {level, total, seen, known}
     due_words: list[dict]
     weak_words: list[dict]

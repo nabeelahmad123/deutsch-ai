@@ -39,6 +39,26 @@ class GradeResult:
     method: str  # "exact" | "fuzzy" | "semantic" | "semantic_fallback_fuzzy"
 
 
+# Structured why-it-was-wrong labels. Deterministic checks cover gender / plural /
+# spelling; the rest are classified by the LLM, degrading to "other" without one.
+ERROR_TYPES = (
+    "wrong_gender",
+    "wrong_plural",
+    "spelling",
+    "false_friend",
+    "wrong_meaning",
+    "blank",
+    "other",
+)
+
+
+@dataclass(frozen=True)
+class Diagnosis:
+    error_type: str | None  # None when the answer was correct
+    feedback: str  # one short learner-facing sentence ("" when correct)
+    method: str = "rule"  # "rule" | "semantic" | "semantic_fallback"
+
+
 @dataclass(frozen=True)
 class AnswerEvaluation:
     question_id: str
@@ -49,6 +69,8 @@ class AnswerEvaluation:
     rationale: str
     method: str
     expected: str
+    error_type: str | None = None
+    feedback: str = ""
 
 
 def normalize(text: str) -> str:
@@ -135,6 +157,91 @@ def semantic_grade(
     return GradeResult(
         correct, max(0.0, min(score, 1.0)), str(data.get("rationale", "")), "semantic"
     )
+
+
+_ARTICLE_PREFIX = re.compile(r"^\s*(der|die|das)\s+(.*)$", re.IGNORECASE)
+_DIAG_SYSTEM = (
+    "A German learner answered incorrectly. Classify why. Reply with ONLY compact "
+    'JSON: {"error_type": "<false_friend|wrong_meaning|other>", "feedback": '
+    '"<one short, encouraging sentence naming the correct answer>"}. '
+    "Use false_friend when the answer is an English-looking cognate with a "
+    "different meaning; wrong_meaning when it is an unrelated word."
+)
+
+
+def _semantic_diagnose(prompt: str, reference: str, user_answer: str, *, client=None) -> Diagnosis:
+    """Ask the LLM why an answer is wrong. Degrades to a generic ``other`` label
+    without credentials (same graceful-failure contract as ``semantic_grade``)."""
+    try:
+        if client is None:
+            from anthropic import Anthropic
+
+            client = Anthropic()
+        model = os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
+        message = client.messages.create(
+            model=model,
+            max_tokens=200,
+            system=_DIAG_SYSTEM,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question: {prompt}\nCorrect answer: {reference}\n"
+                        f"Learner's answer: {user_answer}"
+                    ),
+                }
+            ],
+        )
+        text = "".join(b.text for b in message.content if b.type == "text")
+        data = _parse_grade(text)
+        etype = str(data.get("error_type", "other"))
+        if etype not in ERROR_TYPES:
+            etype = "other"
+        feedback = str(data.get("feedback", "")) or f"Not quite — the answer is “{reference}”."
+        return Diagnosis(etype, feedback, "semantic")
+    except Exception:  # noqa: BLE001 - any failure -> generic label
+        return Diagnosis("other", f"Not quite — the answer is “{reference}”.", "semantic_fallback")
+
+
+def diagnose(
+    quiz_type: str,
+    reference: str,
+    user_answer: str,
+    *,
+    correct: bool,
+    prompt: str = "",
+    article: str | None = None,
+    plural: str | None = None,
+    client=None,
+) -> Diagnosis:
+    """Explain *why* an answer was wrong (or return an empty diagnosis if right).
+
+    Deterministic first -- wrong article, plural-for-singular, near-miss spelling
+    -- then the LLM for genuinely wrong words. ``article``/``plural`` are the
+    reference word's own forms, used only for the ``en_to_de`` checks.
+    """
+    if correct:
+        return Diagnosis(None, "")
+    ans = user_answer.strip()
+    if not ans:
+        return Diagnosis("blank", f"No answer given — it's “{reference}”.")
+
+    if quiz_type == "article":
+        return Diagnosis("wrong_gender", f"The article is “{reference}”.")
+
+    if quiz_type == "en_to_de":
+        nr = normalize(reference)
+        m = _ARTICLE_PREFIX.match(ans)
+        if m and article and normalize(m.group(2)) == nr and m.group(1).lower() != article:
+            return Diagnosis("wrong_gender", f"Right word — but it's “{article} {reference}”.")
+        if plural and normalize(ans) == normalize(plural):
+            return Diagnosis("wrong_plural", f"That's the plural — the singular is “{reference}”.")
+        if _levenshtein(normalize(ans), nr) <= max(2, len(nr) // 4):
+            return Diagnosis("spelling", f"Almost — check the spelling of “{reference}”.")
+        return _semantic_diagnose(prompt, reference, ans, client=client)
+
+    # de_to_en, multiple_choice: meaning error, let the LLM say what kind
+    return _semantic_diagnose(prompt, reference, ans, client=client)
 
 
 def grade(

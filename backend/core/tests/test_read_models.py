@@ -55,6 +55,64 @@ def test_user_profile_unknown_user_raises(session):
         read_models.get_user_profile(session, 999)
 
 
+def test_streak_and_daily_activity(session):
+    for day in (0, 1, 2, 4):  # a 3-day run, a gap, then one more
+        update_after_review(
+            session, 1, 1 + day, correct=True, response_time_ms=800, as_of=T0 + day * DAY
+        )
+    streak = read_models.study_streak(session, 1, as_of=T0 + 4 * DAY)
+    assert streak == {"current": 1, "best": 3}
+
+    daily = read_models.daily_activity(session, 1, days=7, as_of=T0 + 6 * DAY)
+    assert len(daily) == 7
+    assert [d["reviews"] for d in daily] == [1, 1, 1, 0, 1, 0, 0]
+    assert daily[-1]["date"] == (T0 + 6 * DAY).date().isoformat()
+
+
+def test_build_dashboard_shape(session):
+    update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
+    update_after_review(session, 1, 15, correct=False, response_time_ms=9000, as_of=T0)
+
+    d = read_models.build_dashboard(session, 1, as_of=T0 + DAY)
+    for key in (
+        "current_streak",
+        "best_streak",
+        "daily_activity",
+        "by_level",
+        "by_topic",
+        "maturity",
+        "forecast",
+        "recent_sessions",
+        "words_known",
+        "due_words",
+        "weak_words",
+    ):
+        assert key in d
+    assert d["words_known"] == 1
+    assert set(d["maturity"]) == {"learning", "young", "mature"}
+    assert [f["label"] for f in d["forecast"]] == [
+        "overdue",
+        "today",
+        "next 7 days",
+        "next 30 days",
+        "later",
+    ]
+
+
+def test_coverage_by_level(session):
+    # conftest: 40 words, ten per band (A1 = ids 1-10, A2 = 11-20, ...)
+    update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)  # A1 known
+    update_after_review(session, 1, 2, correct=False, response_time_ms=9000, as_of=T0)  # A1 seen
+    update_after_review(session, 1, 15, correct=True, response_time_ms=800, as_of=T0)  # A2 known
+
+    cov = read_models.coverage_by_level(session, 1)
+    assert [c["level"] for c in cov] == ["A1", "A2", "B1", "B2"]
+    by = {c["level"]: c for c in cov}
+    assert by["A1"] == {"level": "A1", "total": 10, "seen": 2, "known": 1}
+    assert by["A2"] == {"level": "A2", "total": 10, "seen": 1, "known": 1}
+    assert by["B1"] == {"level": "B1", "total": 10, "seen": 0, "known": 0}
+
+
 def test_card_state_view_serialises_datetimes(session):
     update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
     view = read_models.card_state_view(session, 1, 1)
