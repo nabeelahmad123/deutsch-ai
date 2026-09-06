@@ -27,9 +27,10 @@ from mcp.server.mcpserver.exceptions import ResourceError, ResourceNotFoundError
 
 from backend.core import read_models, scheduler
 from backend.core.read_models import CardStateView, SessionView, UserProfile, WordView
+from backend.db.models import Word
 from backend.db.session import session_scope
-from backend.study import quiz
-from backend.study.grading import AnswerEvaluation, grade
+from backend.study import conversation, quiz
+from backend.study.grading import AnswerEvaluation, diagnose, grade
 from backend.tracing.tracer import Tracer
 
 INSTRUCTIONS = (
@@ -117,6 +118,15 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
 
     @server.tool()
     @tool
+    def get_mistake_summary(user_id: int, limit: int = 60) -> read_models.MistakeSummary:
+        """Recent incorrect answers with their diagnostic labels (wrong_gender,
+        spelling, false_friend, ...), plus counts by label. For analysing where a
+        learner is going wrong."""
+        with session_scope() as session:
+            return read_models.mistake_summary(session, user_id, limit=_clamp(limit))
+
+    @server.tool()
+    @tool
     def get_new_words(
         user_id: int, topic: str | None = None, count: int = DEFAULT_NEW_COUNT
     ) -> list[WordView]:
@@ -152,6 +162,22 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
             except LookupError as exc:
                 raise ToolError(str(exc)) from exc
 
+    @server.tool()
+    @tool
+    def create_conversation_session(
+        user_id: int, scenario: str, minutes: int = 10
+    ) -> conversation.ConversationStart:
+        """Start a conversational-practice roleplay: pick target words (due +
+        weak + a little new -- the scheduler still chooses them), persist a
+        session, and return the tutor's German opening line. The dialogue itself
+        runs turn-by-turn via the study API; call update_learning_state for each
+        target word the learner ends up using correctly."""
+        with session_scope() as session:
+            try:
+                return conversation.start_conversation(session, user_id, scenario, minutes)
+            except LookupError as exc:
+                raise ToolError(str(exc)) from exc
+
     # --- quiz + grading + state -----------------------------------------
     @server.tool()
     @tool
@@ -177,13 +203,28 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
     @server.tool()
     @tool
     def evaluate_answer(question_id: str, user_answer: str) -> AnswerEvaluation:
-        """Grade an answer. Free-text (de_to_en) uses the LLM for semantic
-        grading, falling back to fuzzy matching; others are exact/fuzzy."""
+        """Grade an answer and diagnose why a miss happened. Free-text (de_to_en)
+        uses the LLM for semantic grading, falling back to fuzzy matching; others
+        are exact/fuzzy. ``error_type`` / ``feedback`` explain an incorrect
+        answer (wrong_gender / wrong_plural / spelling / false_friend / ...)."""
         try:
             spec = quiz.decode_qid(question_id)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
         result = grade(spec["t"], spec["r"], user_answer, prompt=spec.get("p", ""))
+        with session_scope() as session:
+            word = session.get(Word, spec["w"])
+            article = word.article if word else None
+            plural = word.plural if word else None
+        diag = diagnose(
+            spec["t"],
+            spec["r"],
+            user_answer,
+            correct=result.correct,
+            prompt=spec.get("p", ""),
+            article=article,
+            plural=plural,
+        )
         return AnswerEvaluation(
             question_id=question_id,
             word_id=spec["w"],
@@ -193,6 +234,8 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
             rationale=result.rationale,
             method=result.method,
             expected=spec["r"],
+            error_type=diag.error_type,
+            feedback=diag.feedback,
         )
 
     @server.tool()
@@ -202,12 +245,21 @@ def build_server(*, tracer: Tracer | None = None) -> MCPServer:
         word_id: int,
         correct: bool,
         response_time_ms: int = NEUTRAL_RESPONSE_MS,
+        error_type: str | None = None,
     ) -> CardStateView:
-        """Record a review outcome and return the word's new spaced-repetition state."""
+        """Record a review outcome and return the word's new spaced-repetition
+        state. ``error_type`` (from ``evaluate_answer``) is stored for analysis
+        and does not affect scheduling."""
         with session_scope() as session:
             try:
                 scheduler.update_after_review(
-                    session, user_id, word_id, correct, response_time_ms, as_of=_now()
+                    session,
+                    user_id,
+                    word_id,
+                    correct,
+                    response_time_ms,
+                    as_of=_now(),
+                    error_type=error_type,
                 )
             except LookupError as exc:
                 raise ToolError(str(exc)) from exc

@@ -85,7 +85,22 @@ class AnswerFeedback:
     new_state: dict = field(default_factory=dict)  # CardStateView after the update
 
 
+class MissingAPIKey(RuntimeError):
+    """Raised when the agent is run without Anthropic credentials configured.
+
+    The deterministic core, the MCP servers and the study API all run without a
+    key -- only the agent's tool-calling loop needs one (CLAUDE.md section 9).
+    """
+
+
 def _anthropic_client():
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+        raise MissingAPIKey(
+            "the agent needs an Anthropic API key: set ANTHROPIC_API_KEY in your "
+            "environment (or a .env file) and re-run. Everything else in this "
+            "project -- the scheduler, both MCP servers, the study API and its "
+            "frontend -- runs without one."
+        )
     from anthropic import Anthropic
 
     return Anthropic()  # resolves ANTHROPIC_API_KEY / auth profile
