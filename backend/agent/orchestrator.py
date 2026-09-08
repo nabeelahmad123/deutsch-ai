@@ -19,12 +19,46 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from backend.agent.mcp_client import MCPToolClient, MCPToolError
 from backend.tracing.tracer import TraceEvent, Tracer, get_tracer
+
+
+def _resolve_transient() -> tuple[type[BaseException], ...]:
+    """Anthropic error types worth retrying: rate limits, 5xx, dropped
+    connections. Empty when the SDK isn't installed (scripted-LLM tests)."""
+    try:
+        import anthropic
+    except ImportError:  # pragma: no cover - agent extra always present in CI
+        return ()
+    return (
+        anthropic.RateLimitError,
+        anthropic.APIConnectionError,
+        anthropic.InternalServerError,
+    )
+
+
+_TRANSIENT_EXC: tuple[type[BaseException], ...] = _resolve_transient()
+_RETRY_ATTEMPTS = 3
+
+
+def _create_message(llm, **kwargs):
+    """``llm.messages.create`` with bounded exponential backoff on transient
+    API failures. A scripted FakeLLM never raises these, so this is a no-op
+    there."""
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            return llm.messages.create(**kwargs)
+        except _TRANSIENT_EXC:
+            if attempt == _RETRY_ATTEMPTS:
+                raise
+            time.sleep(min(2**attempt, 8) * (0.5 + random.random()))
+
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TURNS = 8
@@ -35,10 +69,16 @@ MAX_TOKENS = 1200
 SYSTEM = """\
 You plan a single German vocabulary study session for learner user_id={user_id}.
 
-1. Read the learner's request and work out two things: how many minutes they have
-   (an integer) and the topic/target, if any (one of: work, travel, general,
-   exam, or a subject like "food"; use null if unclear). This is the only
-   judgement you make.
+1. Read the learner's request and work out two things. This is the only
+   judgement you make:
+   - minutes: an integer. If the request names a duration, use it. If it does
+     NOT ("brush up before my trip", "help me with German"), default to 10.
+     Never skip composing a session just because no duration was given.
+   - topic: an optional subject filter, one of exactly: work, travel, transport,
+     food, home, health, body, education, nature, family, money, time,
+     communication, clothing. Use null unless the request clearly matches one.
+     "exam prep", "general practice" and vague requests have NO topic (null) --
+     do not guess "work".
 2. Call get_user_profile first to see where the learner stands (and optionally
    get_words_due_for_review / get_weak_words / get_new_words).
 3. Call create_learning_session exactly once, passing the minutes and topic you
@@ -149,8 +189,13 @@ def _run_loop(
 
     for turn in range(1, max_turns + 1):
         out.turns = turn
-        response = llm.messages.create(
-            model=model, max_tokens=MAX_TOKENS, system=system, tools=tools, messages=messages
+        response = _create_message(
+            llm,
+            model=model,
+            max_tokens=MAX_TOKENS,
+            system=system,
+            tools=tools,
+            messages=messages,
         )
         blocks = list(response.content)
         text = " ".join(b.text for b in blocks if getattr(b, "type", None) == "text").strip()
