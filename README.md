@@ -1,5 +1,8 @@
 # learn-german
 
+**Live demo: <https://deutsch-ai.duckdns.org>** · log in with **demo / demo**
+(deployed from `main` by GitHub Actions — see [`deploy/`](deploy/))
+
 An adaptive German-vocabulary learning system, built as a production-shaped demo
 of **agentic AI / MCP orchestration** backed by **modest but real ML rigor**. It
 is deliberately *not* a polished consumer app — the priorities are architectural
