@@ -1,4 +1,4 @@
-"""CRUD coverage for the thin FastAPI layer (build-order step 1)."""
+"""CRUD coverage for the thin FastAPI layer."""
 
 WORD = {
     "lemma": "Haus",

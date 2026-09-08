@@ -1,4 +1,4 @@
-"""LG-10: the full section-9 flow -- compose, quiz, grade each answer, summarise.
+"""The full study-session flow: compose, quiz, grade each answer, summarise.
 
 The LLM is scripted (no network); grading falls back to fuzzy matching since no
 ANTHROPIC_API_KEY is set, which is enough to exercise the orchestration.

@@ -1,5 +1,5 @@
 """A throwaway in-memory SQLite DB with a user and a spread of words, for the
-DB-backed scheduler tests. No network, no live Postgres (DoD section 17)."""
+DB-backed scheduler tests. No network, no live Postgres."""
 
 import datetime as dt
 from collections.abc import Iterator

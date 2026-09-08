@@ -2,53 +2,53 @@
 
 ## The shape
 
-```
-   learner (natural language)                      learner (browser)
-        "I have 10 minutes,                          frontend/  (static, no build)
-         German for work"                           ├─ index.html   vocab browser
-                │                                    └─ study.html   session + progress
-                │                                              │
-        ┌───────▼─────────────────────┐                 ┌───────▼──────────┐
-        │  agent  backend/agent/       │                 │ backend/api/     │
-        │  ─ orchestrator.py           │                 │  thin FastAPI    │
-        │    parse intent  ← the ONLY  │                 │  ─ CRUD          │
-        │    natural-language step     │                 │  ─ /study/*      │
-        │  ─ run_session / run_        │                 └───────┬──────────┘
-        │    conversation              │                         │
-        │  ─ MultiServerToolClient     │                         │
-        └────┬───────────────┬─────────┘                         │
-      MCP    │               │   MCP                             │
-     tools   │               │  tools                            │
-   ┌─────────▼──────┐  ┌─────▼───────────┐                       │
-   │ MCP server #1  │  │ MCP server #2   │  own process,         │
-   │ learning_server│  │ secondary_server│  own transport (stdio │
-   │  11 tools +    │  │  notes vault    │  or streamable-http), │
-   │  vocab://…     │  │  5 tools        │  no shared domain code│
-   └─────────┬──────┘  └─────┬───────────┘                       │
-      only path to     filesystem                                │
-      the data layer   │  _vault/*.md                            │
-   ┌─────────▼──────────────────────────────────────┐  ┌─────────▼─────────┐
-   │ backend/core/  (deterministic, no LLM,         │  │ backend/study/    │
-   │                no network but the DB)          │  │  quiz + grading   │
-   │  scheduler.py  SM-2, time budget, selection,   │  │  (shared by the   │
-   │                session persistence             │◄─┤   MCP server and  │
-   │  read_models.py  hydration + projections       │  │   the API)        │
-   └─────────┬──────────────────────────────────────┘  └───────────────────┘
-   ┌─────────▼────────────────┐        backend/db/  models + Alembic + seed.py
-   │ PostgreSQL               │        words · users · review_logs · sessions
-   └──────────────────────────┘
+```mermaid
+flowchart TB
+    NL["Learner — natural language<br/><i>I have 10 minutes, German for work</i>"]
+    BROWSER["Learner — browser (single-page app)"]
 
-  every LLM turn + tool call + resource read + injected fault
-        ──►  backend/tracing/tracer.py     JSONL {name,input,output,latency,success}
+    ORCH["<b>agent</b> · backend/agent<br/>Anthropic tool-use loop<br/>parses intent: minutes + topic<br/>(the only natural-language step)"]
+    API["<b>api</b> · backend/api<br/>thin FastAPI · CRUD + /study/*<br/>serves the SPA"]
 
-  backend/learner_model/   (offline, no DB in the eval loop, no LLM)
-     simulator.py   parameterised forgetting curves (fast / average / forgetful)
-     hlr.py         Half-Life Regression  (Settles & Meeder 2016)
-     evaluate.py    random vs SM-2 vs HLR  →  retention + calibration metrics
-     real_data.py   the same SM-2 metric, but through the real scheduler + a
-                    real review_logs table  (validation, Δ = 0.008)
-     report.py      →  docs/EVALUATION.md + plots
+    subgraph mcp [" MCP servers — separate processes, separate transports "]
+        direction LR
+        M1["<b>#1 learning_server</b><br/>tools + <code>vocab://</code> resource"]
+        M2["<b>#2 notes vault</b><br/>log_progress, write/read notes"]
+    end
+
+    CORE["<b>core</b> · backend/core<br/>SM-2 · time budget · word selection<br/><b>deterministic — no LLM, no network but the DB</b>"]
+    STUDY["<b>study</b> · quiz + grading<br/>(shared by the MCP server and the API)"]
+    DB[("PostgreSQL<br/>review_logs · card_states · sessions · words")]
+    VAULT[["filesystem<br/>_vault/*.md"]]
+    TRACE["<b>tracing</b> · JSON-lines<br/>every LLM turn + tool call<br/>name · input · output · latency · ok"]
+
+    subgraph eval [" backend/learner_model — offline, no DB or LLM in the loop "]
+        direction LR
+        SIM["forgetting-curve<br/>simulator"] --> EV["evaluate<br/>SM-2 vs HLR vs random<br/>→ docs/EVALUATION.md"]
+        HLR["Half-Life<br/>Regression"] --> EV
+    end
+
+    NL --> ORCH
+    BROWSER --> API
+    ORCH -- "MCP tool calls (the only way it touches data)" --> M1
+    ORCH -- "MCP tool calls" --> M2
+    M1 --> CORE
+    M1 --> STUDY
+    API --> CORE
+    API --> STUDY
+    M2 --> VAULT
+    CORE --> DB
+    ORCH -.-> TRACE
+    M1 -.-> TRACE
+    M2 -.-> TRACE
 ```
+
+Read it top to bottom: a request enters as language (left) or through the SPA
+(right). The **agent** makes one judgement — minutes and topic — then calls
+**MCP tools**. Those tools are the only path to data, even in-process. Behind
+them the **deterministic core** does every scheduling decision. The
+**learner_model** package is offline: it never runs in a request, it produces
+the evaluation.
 
 ## Design rules — and where they're enforced
 

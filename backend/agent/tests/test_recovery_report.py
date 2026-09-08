@@ -1,4 +1,4 @@
-"""LG-14: the recovery-rate report is produced from a scripted run and every
+"""The recovery-rate report is produced from a scripted run and every
 scenario is handled gracefully (never crashes or hangs)."""
 
 from backend.agent.recovery import build_report, compute_metrics, render_report, scenarios
@@ -8,7 +8,7 @@ def test_report_summary_and_dispositions(seeded_db, tmp_path):
     metrics, outcomes, _ = build_report(trace_dir=tmp_path)
 
     assert metrics.scenarios == len(scenarios()) == 7
-    # first-class requirement (section 11): never a silent hang or crash
+    # the hard requirement: never a silent hang or crash
     assert metrics.crashed == 0
     assert metrics.hung == 0
     assert metrics.graceful_handling_rate == 1.0

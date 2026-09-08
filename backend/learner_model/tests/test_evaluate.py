@@ -1,4 +1,4 @@
-"""The offline evaluation harness (LG-17 AC: one command -> a metrics dict)."""
+"""The offline evaluation harness."""
 
 import json
 

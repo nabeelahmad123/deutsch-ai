@@ -1,4 +1,4 @@
-"""LG-18: the evaluation writeup -- real-data validation + markdown + figures."""
+"""The evaluation writeup -- real-data validation + markdown + figures."""
 
 import json
 
