@@ -69,6 +69,22 @@ def test_streak_and_daily_activity(session):
     assert daily[-1]["date"] == (T0 + 6 * DAY).date().isoformat()
 
 
+def test_review_forecast_handles_tz_aware_due_at(session):
+    # Postgres returns card_states.due_at tz-aware; SQLite returns it naive.
+    # review_forecast compares it in Python against naive edges, so an aware
+    # value used to raise "can't compare offset-naive and offset-aware".
+    from backend.db.models import CardState as CardStateRow
+
+    update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
+    row = session.get(CardStateRow, (1, 1))
+    row.due_at = dt.datetime.now(dt.UTC) + DAY  # tz-aware, like psycopg returns
+    session.flush()
+
+    fc = read_models.review_forecast(session, 1, as_of=dt.datetime.now(dt.UTC))
+    assert sum(b["count"] for b in fc) == 1
+    assert {b["label"] for b in fc} >= {"today", "next 7 days"}
+
+
 def test_build_dashboard_shape(session):
     update_after_review(session, 1, 1, correct=True, response_time_ms=800, as_of=T0)
     update_after_review(session, 1, 15, correct=False, response_time_ms=9000, as_of=T0)
