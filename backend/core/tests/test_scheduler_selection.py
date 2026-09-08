@@ -50,6 +50,18 @@ def test_select_new_words_n_zero_or_negative(session):
     assert select_new_words(session, 1, topic=None, n=-3) == []
 
 
+def test_build_session_unknown_topic_falls_back_to_no_filter(session):
+    # "exam" is not a tagged word topic -> the filtered query is empty, so the
+    # session must still be composed from unfiltered new words, not come back bare.
+    assert select_new_words(session, 1, topic="exam", n=10) == []
+    plan = build_session(session, 1, minutes_available=15, topic="exam", as_of=T0)
+    assert plan.new_word_ids  # non-empty despite the unknown topic
+    assert (
+        plan.new_word_ids
+        == build_session(session, 1, minutes_available=15, topic=None, as_of=T0).new_word_ids
+    )
+
+
 def test_explicit_level_pins_the_band_and_ignores_the_ceiling(session):
     # a brand-new user's ceiling is A1, but an explicit B1 request gets B1 words
     picked = select_new_words(session, 1, topic=None, n=5, level=CEFRLevel.B1)

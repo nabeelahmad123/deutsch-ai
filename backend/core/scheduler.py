@@ -418,6 +418,13 @@ def build_session(
     new_candidates = select_new_words(
         session, user_id, topic, MAX_NEW_WORDS_PER_SESSION, level=level
     )
+    # An unrecognised or exhausted topic ("exam", "general", a niche subject with
+    # no tagged words) should not yield an empty session -- fall back to no topic
+    # filter rather than hand back nothing.
+    if topic is not None and not new_candidates:
+        new_candidates = select_new_words(
+            session, user_id, None, MAX_NEW_WORDS_PER_SESSION, level=level
+        )
 
     budget = plan_budget(
         minutes_available,

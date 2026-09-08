@@ -39,6 +39,7 @@
     chart: '<path d="M4 20V4M4 20h16M8 16v-5M13 16V8M18 16v-9"/>',
     gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
     chat: '<path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/>',
+    spark: '<path d="M12 3l1.9 4.7L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.3z"/><path d="M18 15l.9 2.2L21 18l-2.1.8L18 21l-.9-2.2L15 18l2.1-.8z"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
   };
   const svg = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -192,11 +193,126 @@
   }
 
   // ================================================================
+  //  VIEW: COACH  (natural language -> agent -> MCP tools)
+  // ================================================================
+  const SERVER_LABEL = { learning: "learning server", notes: "notes vault" };
+  // Set by the Coach view, consumed once by viewStudy: the exact session the
+  // agent composed (its words + quiz + session id), so "Study this session"
+  // actually studies *that* session rather than composing a fresh one.
+  let coachHandoff = null;
+
+  function viewCoach(root) {
+    root.classList.add("narrow");
+    root.innerHTML = `
+      <div class="card">
+        <p class="muted" style="margin:0 0 12px">
+          Ask in plain English. The agent does <b>one</b> piece of language
+          reasoning — turning your words into a time budget and topic — then
+          calls <b>MCP tools</b> to compose the session. It never picks the
+          words or the schedule itself.
+        </p>
+        <label class="field"><span>Your request</span>
+          <textarea id="c-req" class="input" rows="3"
+            style="resize:vertical;font:inherit">I have 10 minutes, German for work</textarea></label>
+        <label class="field"><span>Mode</span>
+          <div class="seg seg-full" id="c-mode">
+            <button data-m="plan" class="on">Plan a session</button>
+            <button data-m="converse">Converse (both servers)</button>
+          </div>
+        </label>
+        <button class="btn block" id="c-go">Ask the coach</button>
+        <div id="c-msg" class="mini mt-3" aria-live="polite">
+          Try “20 minutes, travel vocab” or, in Converse mode, “set up a short
+          session and note where I'm at”.</div>
+      </div>
+      <div id="c-out"></div>`;
+
+    let mode = "plan";
+    let last = null; // the most recent agent result, for the handoff to Study
+    $$("#c-mode button").forEach((b) => (b.onclick = () => {
+      mode = b.dataset.m;
+      $$("#c-mode button").forEach((x) => x.classList.toggle("on", x === b));
+    }));
+    $("#c-go").onclick = () => withBusy($("#c-go"), run);
+    $("#c-req").onkeydown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); $("#c-go").click(); }
+    };
+
+    async function run() {
+      const request = $("#c-req").value.trim();
+      const msg = $("#c-msg"), out = $("#c-out");
+      if (request.length < 3) { msg.innerHTML = `<span class="err-text">Type a request first.</span>`; return; }
+      msg.textContent = mode === "converse"
+        ? "running the cross-server loop…" : "parsing intent and calling tools…";
+      out.innerHTML = skeleton();
+      try {
+        const r = await api("/agent/plan", { method: "POST", body: JSON.stringify(
+          { user_id: uid(), request, mode }) });
+        last = r;
+        msg.textContent = `Agent stopped: ${r.stopped} · ${r.turns} LLM turn${r.turns === 1 ? "" : "s"}.`;
+        out.innerHTML = renderResult(r);
+      } catch (e) {
+        out.innerHTML = "";
+        msg.innerHTML = `<span class="err-text">${esc(e.message)}</span>` +
+          (String(e.message).includes("not configured")
+            ? `<br><span class="muted">This deployment has no Anthropic API key set, so the agent loop is disabled. The deterministic study flow still works under <a href="#/study">Study</a>.</span>`
+            : "");
+      }
+    }
+
+    function renderResult(r) {
+      const chips = [];
+      const iv = r.intent || {};
+      if (iv.minutes_available != null) chips.push(`${iv.minutes_available} min`);
+      if (iv.topic) chips.push(esc(iv.topic));
+      const servers = (r.servers_used || []).map((s) =>
+        `<span class="pill">${esc(SERVER_LABEL[s] || s)}</span>`).join(" ");
+      const steps = (r.tool_calls || []).map((t, i) =>
+        `<li><span class="stepn">${i + 1}</span><code>${esc(t)}()</code></li>`).join("");
+      const wordList = (title, ws) => !ws || !ws.length ? "" : `
+        <div class="card-h" style="margin-top:14px"><h3>${title}</h3><span class="sp"></span><span class="muted">${ws.length}</span></div>
+        <ul class="wl">${ws.map((w) =>
+          `<li><b>${esc(w.article ? w.article + " " : "")}${esc(w.lemma)}</b>
+           <span>${esc(shortGloss(w.translation_en || w.gloss || ""))}</span></li>`).join("")}</ul>`;
+
+      return `
+        <div class="card">
+          ${r.reply ? `<p style="margin:0 0 10px;font-size:15px">${esc(r.reply)}</p>` : ""}
+          ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="pill">${c}</span>`).join(" ")}</div>` : ""}
+          ${servers ? `<div class="chips mt-3"><span class="muted" style="margin-right:6px">servers used:</span>${servers}</div>` : ""}
+
+          <div class="card-h" style="margin-top:16px"><h3>How it did it</h3><span class="sp"></span>
+            <span class="muted">${(r.tool_calls || []).length} MCP tool call${(r.tool_calls || []).length === 1 ? "" : "s"}</span></div>
+          ${steps ? `<ol class="steps">${steps}</ol>`
+                  : `<p class="muted">No tools were called — the agent ${esc(r.stopped)}.</p>`}
+
+          ${wordList("Review words", r.review_words)}
+          ${wordList("New words", r.new_words)}
+
+          ${r.session_id ? `<button class="btn block mt-3" id="c-open">Study this session</button>` : ""}
+        </div>`;
+    }
+
+    root.addEventListener("click", (e) => {
+      if (!e.target || e.target.id !== "c-open" || !last || !last.session_id) return;
+      coachHandoff = {
+        sid: last.session_id,
+        minutes: (last.intent || {}).minutes_available || null,
+        topic: (last.intent || {}).topic || null,
+        words: [...(last.review_words || []), ...(last.new_words || [])],
+        qid: Object.fromEntries((last.quiz || []).map((q) => [q.word_id, q.question_id])),
+      };
+      location.hash = "#/study";
+    });
+  }
+
+  // ================================================================
   //  APP SHELL
   // ================================================================
   const ROUTES = [
     { path: "/", name: "Home", icon: "home", view: viewHome },
     { path: "/study", name: "Study", icon: "cards", view: viewStudy },
+    { path: "/coach", name: "Coach", icon: "spark", view: viewCoach },
     { path: "/practice", name: "Practice", icon: "chat", view: viewPractice },
     { path: "/browse", name: "Browse", icon: "book", view: viewBrowse },
     { path: "/progress", name: "Progress", icon: "chart", view: viewProgress },
@@ -612,6 +728,31 @@
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("hashchange", off);
     });
+
+    // Arrived from Coach with a session the agent already composed: study those
+    // exact words (and reuse its session id / quiz) instead of composing anew.
+    if (coachHandoff) {
+      const h = coachHandoff;
+      coachHandoff = null;
+      $("#s-min").value = h.minutes || $("#s-min").value;
+      $("#s-topic").value = h.topic || "";
+      const canType = h.words.length > 0 && h.words.every((w) => h.qid[w.id]);
+      mode = canType ? "type" : "swipe";
+      $$("#s-mode button").forEach((x) => x.classList.toggle("on", x.dataset.m === mode));
+      if (!h.words.length) {
+        $("#s-msg").textContent = "The agent composed an empty session — adjust the request and try again.";
+      } else {
+        Object.assign(deck, {
+          q: h.words, qid: h.qid, i: 0, correct: 0, streak: 0, best: 0, answered: 0,
+          sid: h.sid, dir: "en", mode, revealed: false, busy: false,
+        });
+        $("#d-rate").hidden = mode === "type";
+        $("#d-type").hidden = mode !== "type";
+        $("#setup").hidden = true; $("#summary").hidden = true; $("#deck").hidden = false;
+        renderCard(true);
+        toast(`Studying the agent's session — ${h.words.length} words`, "ok");
+      }
+    }
   }
 
   // ================================================================

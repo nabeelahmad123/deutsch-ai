@@ -51,6 +51,12 @@ tool surfaces. The whole thing is **traced**, **fault-injected**, and
 
 Details and the five non-negotiable principles: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+The agent is **deliberately narrow** — one natural-language judgement (time +
+topic), then deterministic tools do the rest. That is the point: the interesting
+engineering is the MCP orchestration, the deterministic/LLM boundary, the tracing,
+and the failure/eval harnesses — not an open-ended autonomous planner, which this
+domain doesn't need (see [`docs/NON_GOALS.md`](docs/NON_GOALS.md)).
+
 | area | package | notes |
 |---|---|---|
 | deterministic core | `backend/core/` | SM-2, session budgeting, new-word selection, read projections. **Zero LLM/HTTP imports** (AST-asserted); 100% test coverage. |
@@ -99,9 +105,17 @@ uv run python -m backend.agent --converse \
 # regenerate the deliverables:
 uv run python -m backend.learner_model.report   # docs/EVALUATION.md + plots
 uv run python -m backend.agent.recovery         # docs/FAILURE_RECOVERY.md
+uv run python -m backend.agent.eval             # docs/AGENT_EVAL.md  (needs a key)
+uv run python -m backend.agent.eval.capture     # docs/sample-traces/  (needs a key)
 ```
 
 ## Evaluation
+
+[`docs/AGENT_EVAL.md`](docs/AGENT_EVAL.md) — the **agent's planning loop** scored
+on ~12 labelled natural-language requests: intent parsing, tool-call sequence,
+and session sanity checked against the database. **11/12 on `claude-haiku-4-5`**,
+one documented limitation. Real traces of the tool-use loop (including a
+cross-server one) are in [`docs/sample-traces/`](docs/sample-traces/).
 
 [`docs/EVALUATION.md`](docs/EVALUATION.md) — random vs SM-2 vs HLR through the
 learner simulator, with real plots:
