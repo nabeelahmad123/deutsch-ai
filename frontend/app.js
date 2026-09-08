@@ -196,6 +196,10 @@
   //  VIEW: COACH  (natural language -> agent -> MCP tools)
   // ================================================================
   const SERVER_LABEL = { learning: "learning server", notes: "notes vault" };
+  const PRESET = {
+    plan: "I have 10 minutes, German for work",
+    converse: "Set up a 10-minute German work session and log my progress to my notes.",
+  };
   // Set by the Coach view, consumed once by viewStudy: the exact session the
   // agent composed (its words + quiz + session id), so "Study this session"
   // actually studies *that* session rather than composing a fresh one.
@@ -213,7 +217,7 @@
         </p>
         <label class="field"><span>Your request</span>
           <textarea id="c-req" class="input" rows="3"
-            style="resize:vertical;font:inherit">I have 10 minutes, German for work</textarea></label>
+            style="resize:vertical;font:inherit">${PRESET.plan}</textarea></label>
         <label class="field"><span>Mode</span>
           <div class="seg seg-full" id="c-mode">
             <button data-m="plan" class="on">Plan a session</button>
@@ -222,8 +226,8 @@
         </label>
         <button class="btn block" id="c-go">Ask the coach</button>
         <div id="c-msg" class="mini mt-3" aria-live="polite">
-          Try “20 minutes, travel vocab” or, in Converse mode, “set up a short
-          session and note where I'm at”.</div>
+          <b>Plan</b> uses the learning server only. <b>Converse</b> also asks the
+          notes server to record something — the request has to say so.</div>
       </div>
       <div id="c-out"></div>`;
 
@@ -232,6 +236,9 @@
     $$("#c-mode button").forEach((b) => (b.onclick = () => {
       mode = b.dataset.m;
       $$("#c-mode button").forEach((x) => x.classList.toggle("on", x === b));
+      // swap the example to match the mode, unless the user has typed their own
+      const cur = $("#c-req").value.trim();
+      if (cur === PRESET.plan || cur === PRESET.converse || cur === "") $("#c-req").value = PRESET[mode];
     }));
     $("#c-go").onclick = () => withBusy($("#c-go"), run);
     $("#c-req").onkeydown = (e) => {
@@ -283,6 +290,7 @@
 
           <div class="card-h" style="margin-top:16px"><h3>How it did it</h3><span class="sp"></span>
             <span class="muted">${(r.tool_calls || []).length} MCP tool call${(r.tool_calls || []).length === 1 ? "" : "s"}</span></div>
+          <p class="mini" style="margin:-4px 0 6px">The agent has no scheduling logic of its own — it composed this by calling:</p>
           ${steps ? `<ol class="steps">${steps}</ol>`
                   : `<p class="muted">No tools were called — the agent ${esc(r.stopped)}.</p>`}
 
