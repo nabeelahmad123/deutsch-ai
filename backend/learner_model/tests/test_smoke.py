@@ -1,6 +1,4 @@
 """Smoke tests: the learner-model package imports and its presets are well-formed.
-
-Real model/simulator/evaluation tests arrive with build-order step 7.
 """
 
 from backend.learner_model.hlr import MAX_HALF_LIFE, MIN_HALF_LIFE

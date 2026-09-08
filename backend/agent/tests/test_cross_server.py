@@ -1,7 +1,5 @@
-"""LG-12: one conversation spanning both MCP servers, with a scripted LLM.
-
-The DoD (section 17): the trace must show tools from both servers and the
-reasoning between them.
+"""One conversation spanning both MCP servers, with a scripted LLM: the trace
+must show tools from both servers and an agent turn between them.
 """
 
 import json

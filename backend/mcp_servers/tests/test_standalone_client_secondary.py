@@ -1,4 +1,4 @@
-"""Standalone MCP-client session against server #2 -- the DoD check.
+"""Standalone MCP-client session against server #2.
 
 A real ``ClientSession`` over an in-memory transport, independent of the agent
 and of server #1. Automated stand-in for a manual MCP Inspector session.

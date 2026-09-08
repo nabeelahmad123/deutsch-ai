@@ -33,25 +33,46 @@ so one conversation can span two unrelated tool surfaces. It's a genuinely
 separate process with its own storage; a test asserts it shares no code with the
 first.
 
-## How the agent runs
+## How it fits together
 
-```
-"I have 10 minutes, German for work"
-        │
-   agent  (backend/agent/orchestrator.py) — Anthropic tool-use loop
-        │   parses intent, then calls tools; never picks words or dates
-   ┌────┴─────────────┐
-   │ MCP #1 learning  │  get_user_profile → create_learning_session → create_quiz
-   │ MCP #2 notes     │  log_progress (append a dated section to progress.md)
-   └────┬─────────────┘
-   backend/core        SM-2, time budget, word selection — deterministic
-        │
-   PostgreSQL          review_logs (source of truth) · card_states cache · sessions
+```mermaid
+flowchart TB
+    NL["Learner — natural language<br/><i>I have 10 minutes, German for work</i>"]
+    BROWSER["Learner — browser (SPA)"]
+
+    ORCH["<b>agent</b><br/>Anthropic tool-use loop<br/>parses intent: minutes + topic<br/>(the only NL step)"]
+    API["<b>api</b> — thin FastAPI<br/>CRUD + /study/* · serves the SPA"]
+
+    subgraph mcp [" MCP servers — separate processes "]
+        direction LR
+        M1["<b>#1 learning</b><br/>tools + vocab:// resource"]
+        M2["<b>#2 notes vault</b><br/>log_progress, notes"]
+    end
+
+    CORE["<b>core</b> — SM-2 · time budget · selection<br/><b>deterministic: no LLM, no network but the DB</b>"]
+    DB[("PostgreSQL<br/>review_logs · card_states · sessions")]
+    VAULT[["_vault/*.md"]]
+    TRACE["<b>tracing</b> — JSON lines<br/>every LLM turn + tool call"]
+
+    NL --> ORCH
+    BROWSER --> API
+    ORCH -- "MCP tool calls — the only way it touches data" --> M1
+    ORCH -- "MCP tool calls" --> M2
+    M1 --> CORE
+    API --> CORE
+    M2 --> VAULT
+    CORE --> DB
+    ORCH -.-> TRACE
+    M1 -.-> TRACE
+    M2 -.-> TRACE
 ```
 
-Every LLM turn and tool call is written to a JSON-lines trace
-(`backend/tracing/`). Sample traces, including a cross-server one, are in
-[`docs/sample-traces/`](docs/sample-traces/).
+The agent makes one judgement — minutes and topic — then calls MCP tools. The
+tools are the only path to data; the deterministic core makes every scheduling
+decision. Every LLM turn and tool call is written to a JSON-lines trace; sample
+traces (including a cross-server one) are in
+[`docs/sample-traces/`](docs/sample-traces/). Full walkthrough in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## What's where
 
