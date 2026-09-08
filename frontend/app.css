@@ -531,3 +531,27 @@ tr.click:hover td { background:var(--panel-2); }
   .grid3, .kpis { grid-template-columns:1fr 1fr; }
   .row { grid-template-columns:1fr; }
 }
+
+/* ---- Coach view (agent showcase) ------------------------------------- */
+.pill {
+  display:inline-flex; align-items:center; padding:3px 10px; border-radius:var(--r-pill);
+  font-size:var(--fs-12); font-weight:560; background:var(--accent-bg); color:var(--accent);
+  border:1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+ol.steps { list-style:none; margin:var(--s2) 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+ol.steps li { display:flex; align-items:center; gap:10px; font-size:var(--fs-13); }
+ol.steps code {
+  font:var(--fs-13)/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--panel-3); padding:2px 7px; border-radius:6px; color:var(--fg);
+}
+ol.steps .stepn {
+  flex:none; width:20px; height:20px; border-radius:50%; display:grid; place-items:center;
+  background:var(--accent); color:var(--on-accent); font-size:var(--fs-11); font-weight:680;
+}
+ul.wl { list-style:none; margin:var(--s2) 0 0; padding:0; display:flex; flex-direction:column; }
+ul.wl li {
+  display:flex; justify-content:space-between; gap:12px; padding:7px 0;
+  border-bottom:1px solid var(--line); font-size:var(--fs-13);
+}
+ul.wl li:last-child { border-bottom:0; }
+ul.wl li span { color:var(--fg-3); text-align:right; }

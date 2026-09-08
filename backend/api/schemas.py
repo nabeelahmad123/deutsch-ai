@@ -111,6 +111,28 @@ class SessionOut(BaseModel):
     new_words: list[dict]
 
 
+class AgentPlanIn(BaseModel):
+    """A natural-language request for the agent (LLM tool-use loop, MCP tools)."""
+
+    user_id: int = Field(ge=1)
+    request: str = Field(min_length=3, max_length=400)
+    mode: str = Field(default="plan", pattern="^(plan|converse)$")
+
+
+class AgentPlanOut(BaseModel):
+    mode: str
+    stopped: str  # completed | no_session | max_turns | refusal
+    turns: int
+    reply: str
+    intent: dict = Field(default_factory=dict)
+    tool_calls: list[str] = Field(default_factory=list)
+    servers_used: list[str] = Field(default_factory=list)
+    session_id: int | None = None
+    review_words: list[dict] = Field(default_factory=list)
+    new_words: list[dict] = Field(default_factory=list)
+    quiz: list[dict] = Field(default_factory=list)
+
+
 class QuizIn(BaseModel):
     word_ids: list[int] = Field(min_length=1, max_length=50)
     quiz_type: str = "en_to_de"

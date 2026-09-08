@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.api.agent import router as agent_router
 from backend.api.auth import router as auth_router
 from backend.api.schemas import (
     ReviewLogIn,
@@ -36,6 +37,7 @@ from backend.db.session import get_session
 app = FastAPI(title="learn-german backend", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(study_router)
+app.include_router(agent_router)
 
 # The minimal frontend (a static page) calls this API from the browser. Origins
 # are configurable; default is permissive for local dev.
