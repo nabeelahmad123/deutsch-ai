@@ -1,4 +1,4 @@
-"""Recovery-behaviour harness + report (CLAUDE.md section 11, LG-14).
+"""Recovery-behaviour harness + report.
 
 Drives each fault kind through a real agent run (the LLM is scripted so this is
 deterministic and needs no API key) and classifies how the agent responded:

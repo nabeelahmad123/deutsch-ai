@@ -1,4 +1,4 @@
-"""Standalone MCP-client session against server #1 -- the LG-08 DoD check.
+"""Standalone MCP-client session against server #1 -- the DoD check.
 
 A real ``ClientSession`` talks to the server over an in-memory transport (full
 JSON-RPC: initialize, list_tools, list_resources, read_resource, call_tool),

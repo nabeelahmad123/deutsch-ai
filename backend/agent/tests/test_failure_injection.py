@@ -1,4 +1,4 @@
-"""Each fault kind is reproducibly triggerable (CLAUDE.md section 11, LG-13)."""
+"""Each fault kind is reproducibly triggerable."""
 
 import json
 import time

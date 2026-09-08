@@ -5,7 +5,7 @@ Keyword lookup only -- NOT a classifier. Most words match nothing and stay
 ``get_new_words(topic=...)`` (MCP server #1) and the session composer have a
 coarse thematic filter aligned with ``users.target`` (work / travel / exam).
 
-Document as an approximation (CLAUDE.md section 6): a gloss-keyword hit is a
+Document as an approximation: a gloss-keyword hit is a
 hint, not ground truth.
 """
 

@@ -1,4 +1,4 @@
-"""Render the offline evaluation into docs/EVALUATION.md + plots (LG-18).
+"""Render the offline evaluation into docs/EVALUATION.md + plots.
 
     python -m backend.learner_model.report
 

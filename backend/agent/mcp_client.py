@@ -1,7 +1,7 @@
 """A thin client the agent uses to reach MCP server #1.
 
 The agent touches the data layer only through typed MCP tool calls -- even
-in-process (non-negotiable principle #3). This wraps an ``MCPServer`` and exposes
+in-process (a core design rule). This wraps an ``MCPServer`` and exposes
 two things the orchestrator needs: Anthropic-shaped tool specs, and a sync
 ``call(name, args)`` that traces every call.
 

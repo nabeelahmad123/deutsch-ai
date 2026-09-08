@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models.
 
-Mirrors the data model sketch in CLAUDE.md section 5. Kept deliberately small.
+Mirrors the data model sketch in docs/DESIGN.md. Kept deliberately small.
 No LLM or network imports here; this module is safe to import from
 ``backend/core`` and from the ingestion scripts.
 """
@@ -60,7 +60,7 @@ class Word(Base):
     cefr_level: Mapped[CEFRLevel] = mapped_column(Enum(CEFRLevel, name="cefr_level"), index=True)
     frequency_rank: Mapped[int] = mapped_column(Integer, index=True)
     topic: Mapped[str | None] = mapped_column(String(64), index=True)
-    # IPA transcription, or a reference/URL to generated audio. See section 6.
+    # IPA transcription, or a reference/URL to generated audio.
     ipa_or_audio_ref: Mapped[str | None] = mapped_column(Text)
 
     review_logs: Mapped[list[ReviewLog]] = relationship(back_populates="word")

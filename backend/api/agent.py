@@ -1,4 +1,4 @@
-"""The one API surface that drives the *agent* (CLAUDE.md section 9).
+"""The one API surface that drives the *agent*.
 
 Everything else in ``backend/api`` is deterministic and key-free; this endpoint
 runs the Anthropic tool-use loop so a browser visitor can type a request in

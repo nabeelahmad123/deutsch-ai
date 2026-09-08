@@ -1,11 +1,10 @@
 """Structured tracing for every tool call and agent decision.
 
-CLAUDE.md non-negotiable principle #4: name, input, output, latency,
-success/failure -- logged from day one, not bolted on later. JSON lines to start
-(section 3); a Langfuse/OTel exporter can be added behind the same interface.
+Each event records name, input, output, latency and success/failure, as JSON
+lines. A Langfuse/OTel exporter could sit behind the same interface later.
 
-MCP server #1 wraps every tool (and resource read) with ``trace_tool_call``
-(LG-08). The agent orchestrator adds its own decision traces in LG-09.
+The MCP servers wrap every tool and resource read with ``trace_tool_call``; the
+orchestrator adds an ``agent_decision`` event per LLM turn.
 """
 
 from __future__ import annotations

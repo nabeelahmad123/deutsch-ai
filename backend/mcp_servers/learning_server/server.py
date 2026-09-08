@@ -1,16 +1,16 @@
-"""MCP server #1 -- learning tools + vocab resource (CLAUDE.md section 8).
+"""MCP server #1 -- learning tools + vocab resource.
 
 Every tool is a thin wrapper: open a DB session, delegate to ``backend.core``
 (scheduler for decisions, read_models for hydration/projection), return a typed
-dataclass. No scheduling logic and no ad-hoc DB queries live here (non-negotiable
-principle #2, #3). ``evaluate_answer`` is the one tool that may call the LLM --
-free-text semantic grading only, with a fuzzy-match fallback.
+dataclass. No scheduling logic and no ad-hoc DB queries live here -- that is the
+whole point of the tool layer. ``evaluate_answer`` is the one tool that may call
+the LLM, for free-text semantic grading, with a fuzzy-match fallback.
 
 Every tool call and every resource read is traced (name, input, output, latency,
-success) via ``backend.tracing`` -- non-negotiable principle #4.
+success) via ``backend.tracing``.
 
 The vocab table is also exposed as an MCP *resource* (``vocab://...``), not only
-through tools -- section 8: that is part of the point of using MCP.
+through tools -- part of the point of using MCP over plain function calling.
 """
 
 from __future__ import annotations

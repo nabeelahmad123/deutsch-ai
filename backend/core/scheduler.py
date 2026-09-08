@@ -1,16 +1,13 @@
-"""Deterministic scheduler -- SM-2 baseline.
+"""Deterministic SM-2 scheduler.
 
-CONTRACT (CLAUDE.md section 7). No LLM calls, no network calls except the DB, in
-this file or anything it imports. Given the same inputs it must always return the
-same outputs (non-negotiable principle #1).
+No LLM calls and no network calls except the DB, here or in anything this module
+imports -- ``tests/test_import_purity.py`` enforces it with an AST scan. Same
+inputs, same outputs.
 
-Per-card SM-2 state is NOT stored -- it is reconstructed by folding ``sm2_update``
-over the card's ``review_logs`` (data model, section 5). ``update_after_review``
-therefore just appends a log row.
-
-Build-order step 2. LG-04 covers state + updates (``sm2_update``, ``replay``,
-``get_card_state``, ``words_due_for_review``, ``update_after_review``); word
-selection and session composition land in LG-05.
+Per-card SM-2 state is not stored. It is reconstructed by folding ``sm2_update``
+over the card's ``review_logs``, so ``update_after_review`` just appends a row.
+``card_states`` is a derived cache of that fold, kept in sync incrementally and
+rebuildable from the logs at any time.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ WordId = int
 # CEFR bands, easiest first. A user's "ceiling" for new words is one band above
 # the hardest band they have ever answered correctly (default A1, capped B2) --
 # a deterministic heuristic, in the same approximate spirit as the frequency ->
-# CEFR mapping (CLAUDE.md section 6).
+# CEFR mapping.
 _CEFR_ORDER: tuple[CEFRLevel, ...] = (
     CEFRLevel.A1,
     CEFRLevel.A2,
@@ -91,10 +88,10 @@ class CardState:
 
 @dataclass
 class SessionPlan:
-    """A composed learning session (produced by ``build_session``, LG-05).
+    """A composed learning session (produced by ``build_session``).
 
     Named ``SessionPlan`` to avoid colliding with the ``sessions`` ORM model and
-    SQLAlchemy's ``Session``; section 7 calls it ``Session`` illustratively.
+    SQLAlchemy's ``Session``.
     """
 
     user_id: int

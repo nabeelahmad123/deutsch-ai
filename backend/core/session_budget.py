@@ -1,6 +1,6 @@
 """Time-budget -> item-count logic for a study session.
 
-Deterministic and dependency-free (CLAUDE.md non-negotiable principle #1). Given
+Deterministic and dependency-free. Given
 a number of minutes, decide how many review items and how many new words fit,
 and how to split the time between them.
 

@@ -6,7 +6,7 @@ Primary source : Leipzig Corpora Collection / Deutscher Wortschatz
 Cross-check    : OpenSubtitles word frequencies (stands in for SUBTLEX-DE, which
                  needs a manual form download); Spearman rank correlation logged.
 
-Licensing (CLAUDE.md section 6, see backend/data/README.md): do NOT redistribute
+Licensing: do NOT redistribute
 either list verbatim. This script reads a locally downloaded raw file and DERIVES
 a normalized table (lemma, frequency_rank) -- surface form + rank only, no counts.
 The raw files are gitignored (backend/data/raw/).
@@ -33,8 +33,7 @@ RAW_DIR = Path(__file__).parent / "raw"
 
 # ~7,500 raw tokens so that, after function words / grammatical-only entries and
 # lemmas with no Wiktionary entry are filtered out (build_seed.iter_study_words),
-# ~4,000 study words remain -- exactly enough to fill the A1-B2 bands (CLAUDE.md
-# section 6: 500 / 1000 / 1500 / 1000).
+# ~4,000 study words remain -- exactly enough to fill the A1-B2 bands.
 DEFAULT_TOP_N = 7500
 
 # A valid German word token: starts and ends with a letter, letters + interior

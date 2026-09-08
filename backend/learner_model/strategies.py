@@ -1,4 +1,4 @@
-"""Scheduling strategies for the offline evaluation (section 12).
+"""Scheduling strategies for the offline evaluation.
 
 Each strategy, per card, decides the next review interval and predicts the
 recall probability at review time; ``update`` folds in the observed outcome.

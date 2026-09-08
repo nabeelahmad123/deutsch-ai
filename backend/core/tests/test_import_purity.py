@@ -1,7 +1,7 @@
-"""backend/core imports nothing LLM / MCP / HTTP -- non-negotiable principle #1.
+"""backend/core imports nothing LLM / MCP / HTTP -- a core design rule.
 
 An AST scan of every non-test module under backend/core. The DB (sqlalchemy) is
-the one network dependency the contract allows (CLAUDE.md section 7).
+the one network dependency the contract allows.
 """
 
 import ast

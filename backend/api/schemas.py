@@ -92,7 +92,7 @@ class ReviewLogOut(BaseModel):
     error_type: str | None = None
 
 
-# --- study flow (minimal frontend, CLAUDE.md section 13) --------------------
+# --- study flow (minimal frontend, docs/DESIGN.md) --------------------
 
 
 class SessionIn(BaseModel):

@@ -1,4 +1,4 @@
-"""Study-flow endpoints for the minimal frontend (CLAUDE.md section 13).
+"""Study-flow endpoints for the minimal frontend.
 
 Human-facing, unlike the agent (which goes through MCP tools). Thin wrappers over
 ``backend.core.scheduler`` + ``backend.study`` -- the same domain logic the MCP

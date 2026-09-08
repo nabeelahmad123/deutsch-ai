@@ -1,8 +1,8 @@
 """Frequency-band -> approximate CEFR tag.
 
-This is an APPROXIMATION, not an authoritative CEFR classification (CLAUDE.md
-section 6). The rank passed in is the word's position among *study words* -- i.e.
-after function words and bare grammatical inflections are filtered out (see
+This is an APPROXIMATION, not an authoritative CEFR classification. The rank
+passed in is the word's position among *study words* -- i.e. after function
+words and bare grammatical inflections are filtered out (see
 backend/data/build_seed.py:iter_study_words) -- so the bands describe useful
 vocabulary, not raw corpus tokens. Cumulative:
 
@@ -10,7 +10,7 @@ vocabulary, not raw corpus tokens. Cumulative:
     rank <= 1500  -> A2
     rank <= 3000  -> B1
     rank <= 4000  -> B2
-    rank >  4000  -> out of scope (A1-B2 only, section 6)
+    rank >  4000  -> out of scope (A1-B2 only)
 
 Pure function, no dependencies, unit-tested.
 """

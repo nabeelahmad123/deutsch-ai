@@ -1,6 +1,6 @@
-"""Entry point for MCP server #1 -- learning tools (CLAUDE.md section 8).
+"""Entry point for MCP server #1 -- learning tools.
 
-Runs as its own process (non-negotiable principle #5). Transport defaults to
+Runs as its own process (a core design rule). Transport defaults to
 stdio (easiest for the MCP Inspector / Claude Desktop / standalone testing);
 set LEARNING_MCP_TRANSPORT=streamable-http to serve over HTTP on
 LEARNING_MCP_HOST:LEARNING_MCP_PORT (what docker-compose uses).

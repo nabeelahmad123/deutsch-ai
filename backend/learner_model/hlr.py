@@ -11,7 +11,7 @@ stability -- the raw half-life spans minutes to a year):
 where ``p`` is the observed recall (1.0 / 0.0, clamped) and ``h_ref`` is the
 half-life implied by that single outcome, ``h_ref = -lag / log2(p_clamped)``.
 
-Features (section 12: "lag time, history of correct/incorrect, word
+Features (""lag time, history of correct/incorrect, word
 difficulty/frequency"): bias, sqrt(#prior correct), sqrt(#prior incorrect),
 difficulty (normalised frequency rank, higher = rarer = harder). Full-batch
 gradient descent -- deterministic, no RNG.

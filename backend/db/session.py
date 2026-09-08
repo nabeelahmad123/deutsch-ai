@@ -1,6 +1,6 @@
 """Engine / session factory.
 
-The only network dependency ``backend/core`` is permitted (CLAUDE.md section 7)
+The only network dependency ``backend/core`` is permitted
 is the database, and only via this module. Tests call ``configure`` with an
 in-memory SQLite URL so CI needs no live Postgres.
 
@@ -60,7 +60,7 @@ def get_engine() -> Engine:
 
 def create_all(url: str | None = None) -> None:
     """Create tables. Convenience for tests and local bootstrap; real schema
-    changes go through ``backend/db/migrations`` (section 4)."""
+    changes go through ``backend/db/migrations``."""
     engine = configure(url, force=url is not None)
     Base.metadata.create_all(engine)
 

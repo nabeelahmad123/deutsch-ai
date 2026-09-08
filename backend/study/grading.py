@@ -1,10 +1,9 @@
-"""Answer grading for ``evaluate_answer`` (CLAUDE.md section 8).
+"""Answer grading for ``evaluate_answer``.
 
 Exact / fuzzy string matching for constrained answers; the Anthropic API for
 free-text semantic grading. If the LLM path is unavailable (no credentials, API
-error) it degrades to fuzzy matching and says so in ``method`` -- graceful
-failure is a first-class requirement here, and the failure-injection suite
-(LG-13/14) leans on it.
+error) it degrades to fuzzy matching and records that in ``method``. The
+failure-injection tests rely on that degradation being clean.
 """
 
 from __future__ import annotations
