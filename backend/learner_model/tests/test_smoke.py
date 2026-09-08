@@ -1,5 +1,4 @@
-"""Smoke tests: the learner-model package imports and its presets are well-formed.
-"""
+"""Smoke tests: the learner-model package imports and its presets are well-formed."""
 
 from backend.learner_model.hlr import MAX_HALF_LIFE, MIN_HALF_LIFE
 from backend.learner_model.simulator import LEARNER_TYPES, PRESETS
