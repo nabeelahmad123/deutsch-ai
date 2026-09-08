@@ -79,8 +79,12 @@ def plan(payload: AgentPlanIn, request: Request) -> AgentPlanOut:
                 stopped=conv.stopped,
                 turns=conv.turns,
                 reply=conv.reply,
+                intent=conv.intent,
                 tool_calls=conv.tool_calls,
                 servers_used=conv.servers_used,
+                session_id=conv.session_id,
+                review_words=conv.review_words,
+                new_words=conv.new_words,
             )
         res = run_session(req)
     except MissingAPIKey as exc:  # pragma: no cover - guarded by _has_key above

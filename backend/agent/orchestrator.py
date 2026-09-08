@@ -411,8 +411,14 @@ You help a German learner (user_id={user_id}). Two independent tool surfaces:
 
 Do what the learner asks with the fewest tool calls. When they ask you to
 record / log / note / summarise progress, first gather the facts with the
-learning tools, then write them with log_progress (or a note). Reply in one
-plain sentence when done -- no word list, no bold, no exclamation marks.
+learning tools, then write them with log_progress (or a note).
+
+When you call create_learning_session, pass the minutes the request names and a
+topic if it clearly matches one of: work, travel, transport, food, home, health,
+body, education, nature, family, money, time, communication, clothing (else
+null). "a work session" -> topic "work".
+
+Reply in one plain sentence when done -- no word list, no bold, no exclamation.
 """
 
 
@@ -423,6 +429,11 @@ class ConversationResult:
     reply: str
     tool_calls: list[str] = field(default_factory=list)
     servers_used: list[str] = field(default_factory=list)  # e.g. ["learning", "notes"]
+    # populated if the conversation composed a session
+    intent: dict = field(default_factory=dict)
+    session_id: int | None = None
+    review_words: list[dict] = field(default_factory=list)
+    new_words: list[dict] = field(default_factory=list)
 
 
 def run_conversation(
@@ -446,11 +457,20 @@ def run_conversation(
     model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
 
     used: set[str] = set()
+    session_payload: dict | None = None
+    intent: dict = {}
 
-    def on_tool(name: str, _args: dict, _payload: Any) -> None:
+    def on_tool(name: str, args: dict, payload: Any) -> None:
+        nonlocal session_payload, intent
         server = getattr(mcp, "server_for", lambda _n: None)(name)
         if server:
             used.add(server)
+        if name == "create_learning_session":
+            session_payload = payload if isinstance(payload, dict) else None
+            intent = {
+                "minutes_available": args.get("minutes_available"),
+                "topic": args.get("topic"),
+            }
 
     outcome = _run_loop(
         system=CONVERSATION_SYSTEM.format(user_id=request.user_id),
@@ -462,10 +482,15 @@ def run_conversation(
         max_turns=CONVERSATION_MAX_TURNS,
         on_tool=on_tool,
     )
+    sp = session_payload or {}
     return ConversationResult(
         stopped=outcome.stopped,
         turns=outcome.turns,
         reply=outcome.reply,
         tool_calls=outcome.tool_calls,
         servers_used=sorted(used),
+        intent=intent,
+        session_id=sp.get("session_id"),
+        review_words=sp.get("review_words", []),
+        new_words=sp.get("new_words", []),
     )
