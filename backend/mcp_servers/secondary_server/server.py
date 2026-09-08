@@ -6,7 +6,7 @@ Postgres), and no imports from the learning server or backend.core. The agent is
 the only thing that spans both -- e.g. read progress from server #1, then
 ``log_progress`` here.
 
-Every tool call is traced .
+Every tool call is traced.
 """
 
 from __future__ import annotations
