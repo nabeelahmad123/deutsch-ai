@@ -89,8 +89,9 @@ You plan a single German vocabulary study session for learner user_id={user_id}.
    another). Do NOT call evaluate_answer or update_learning_state -- answers are
    graded outside this loop.
 
-After create_quiz returns, tell the learner in one sentence what the session
-holds, and stop.
+After create_quiz returns, say what the session holds in ONE plain sentence --
+no word list, no bold, no exclamation marks -- then stop. For example:
+"A 10-minute work session: 2 reviews and 6 new words."
 """
 QUIZ_TYPES = ("en_to_de", "de_to_en", "multiple_choice", "article")
 DEFAULT_QUIZ_TYPE = "en_to_de"
@@ -410,8 +411,8 @@ You help a German learner (user_id={user_id}). Two independent tool surfaces:
 
 Do what the learner asks with the fewest tool calls. When they ask you to
 record / log / note / summarise progress, first gather the facts with the
-learning tools, then write them with log_progress (or a note). Reply in one or
-two sentences when done.
+learning tools, then write them with log_progress (or a note). Reply in one
+plain sentence when done -- no word list, no bold, no exclamation marks.
 """
 
 
