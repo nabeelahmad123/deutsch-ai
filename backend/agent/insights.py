@@ -30,18 +30,24 @@ Tools come from two servers:
   wrong_gender / spelling / false_friend, and counts by label), get_weak_words.
 - NOTES: log_progress (appends a dated section to the learner's progress.md).
 
-Steps:
-1. Call get_mistake_summary and get_weak_words.
-2. Find 1-3 concrete patterns. Every claim must cite specific words from the
-   data (e.g. "gender errors on -ung nouns: Meinung, Rechnung"). If the data
-   does not support a pattern, say there is not enough signal yet.
-3. Call log_progress ONCE, heading "Weekly insights", with a short Markdown body:
-   a one-line headline, then one bullet per pattern (pattern -- evidence -- one
-   short tip), then a final "Focus next: <skill or topic>" line.
-4. Reply to the learner in one sentence: the headline and the focus.
+Your job is NOT done until you have called log_progress. The analysis must be
+written to the note, not just stated in your reply. Never end your turn with the
+findings only in text.
 
-If there are no misses at all, skip the analysis -- call log_progress with a
-brief "nothing to flag yet, keep it up" note and say so.
+Do this, in order:
+1. Call get_mistake_summary and get_weak_words.
+2. Work out 1-3 concrete patterns. Every claim must cite specific words from the
+   data (e.g. "gender errors on -ung nouns: Meinung, Rechnung"). If the data
+   does not support a pattern, note that there is not enough signal yet.
+3. Call log_progress -- heading "Weekly insights", summary = a short Markdown
+   body: a one-line headline, then one bullet per pattern (pattern -- evidence
+   -- one short tip), then a final "Focus next: <skill or topic>" line. This
+   call is mandatory; the task is incomplete without it.
+4. Only AFTER log_progress returns, reply to the learner in one sentence: the
+   headline and the focus.
+
+If there are no misses at all, still call log_progress with a brief "nothing to
+flag yet, keep it up" note, then say so.
 """
 
 
