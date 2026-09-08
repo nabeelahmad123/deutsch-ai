@@ -28,7 +28,9 @@ from backend.tracing.tracer import TraceEvent, Tracer, get_tracer
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TURNS = 8
-MAX_TOKENS = 4096
+# The loop only needs room for a sentence of reasoning + a few tool calls per
+# turn; a tight cap keeps a runaway turn cheap.
+MAX_TOKENS = 1200
 
 SYSTEM = """\
 You plan a single German vocabulary study session for learner user_id={user_id}.
@@ -37,8 +39,8 @@ You plan a single German vocabulary study session for learner user_id={user_id}.
    (an integer) and the topic/target, if any (one of: work, travel, general,
    exam, or a subject like "food"; use null if unclear). This is the only
    judgement you make.
-2. You MAY call get_user_profile / get_words_due_for_review / get_weak_words /
-   get_new_words to understand where the learner stands.
+2. Call get_user_profile first to see where the learner stands (and optionally
+   get_words_due_for_review / get_weak_words / get_new_words).
 3. Call create_learning_session exactly once, passing the minutes and topic you
    inferred. The deterministic scheduler decides which words -- never choose,
    reorder, or invent vocabulary yourself, and never compute review dates.

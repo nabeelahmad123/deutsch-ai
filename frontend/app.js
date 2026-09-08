@@ -196,6 +196,10 @@
   //  VIEW: COACH  (natural language -> agent -> MCP tools)
   // ================================================================
   const SERVER_LABEL = { learning: "learning server", notes: "notes vault" };
+  // Set by the Coach view, consumed once by viewStudy: the exact session the
+  // agent composed (its words + quiz + session id), so "Study this session"
+  // actually studies *that* session rather than composing a fresh one.
+  let coachHandoff = null;
 
   function viewCoach(root) {
     root.classList.add("narrow");
@@ -224,6 +228,7 @@
       <div id="c-out"></div>`;
 
     let mode = "plan";
+    let last = null; // the most recent agent result, for the handoff to Study
     $$("#c-mode button").forEach((b) => (b.onclick = () => {
       mode = b.dataset.m;
       $$("#c-mode button").forEach((x) => x.classList.toggle("on", x === b));
@@ -243,6 +248,7 @@
       try {
         const r = await api("/agent/plan", { method: "POST", body: JSON.stringify(
           { user_id: uid(), request, mode }) });
+        last = r;
         msg.textContent = `Agent stopped: ${r.stopped} · ${r.turns} LLM turn${r.turns === 1 ? "" : "s"}.`;
         out.innerHTML = renderResult(r);
       } catch (e) {
@@ -288,7 +294,15 @@
     }
 
     root.addEventListener("click", (e) => {
-      if (e.target && e.target.id === "c-open") location.hash = "#/study";
+      if (!e.target || e.target.id !== "c-open" || !last || !last.session_id) return;
+      coachHandoff = {
+        sid: last.session_id,
+        minutes: (last.intent || {}).minutes_available || null,
+        topic: (last.intent || {}).topic || null,
+        words: [...(last.review_words || []), ...(last.new_words || [])],
+        qid: Object.fromEntries((last.quiz || []).map((q) => [q.word_id, q.question_id])),
+      };
+      location.hash = "#/study";
     });
   }
 
@@ -714,6 +728,31 @@
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("hashchange", off);
     });
+
+    // Arrived from Coach with a session the agent already composed: study those
+    // exact words (and reuse its session id / quiz) instead of composing anew.
+    if (coachHandoff) {
+      const h = coachHandoff;
+      coachHandoff = null;
+      $("#s-min").value = h.minutes || $("#s-min").value;
+      $("#s-topic").value = h.topic || "";
+      const canType = h.words.length > 0 && h.words.every((w) => h.qid[w.id]);
+      mode = canType ? "type" : "swipe";
+      $$("#s-mode button").forEach((x) => x.classList.toggle("on", x.dataset.m === mode));
+      if (!h.words.length) {
+        $("#s-msg").textContent = "The agent composed an empty session — adjust the request and try again.";
+      } else {
+        Object.assign(deck, {
+          q: h.words, qid: h.qid, i: 0, correct: 0, streak: 0, best: 0, answered: 0,
+          sid: h.sid, dir: "en", mode, revealed: false, busy: false,
+        });
+        $("#d-rate").hidden = mode === "type";
+        $("#d-type").hidden = mode !== "type";
+        $("#setup").hidden = true; $("#summary").hidden = true; $("#deck").hidden = false;
+        renderCard(true);
+        toast(`Studying the agent's session — ${h.words.length} words`, "ok");
+      }
+    }
   }
 
   // ================================================================
