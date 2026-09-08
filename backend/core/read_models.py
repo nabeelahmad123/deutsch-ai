@@ -488,6 +488,9 @@ def review_forecast(
             CardStateRow.user_id == user_id, CardStateRow.due_at.is_not(None)
         )
     ):
+        # Postgres returns this timestamptz column tz-aware; SQLite returns it
+        # naive. Normalise to naive UTC to match ``now`` / the edges.
+        due = _naive_utc(due)
         for label, edge in edges:
             if due <= edge:
                 buckets[label] += 1
