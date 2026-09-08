@@ -205,73 +205,85 @@
   // actually studies *that* session rather than composing a fresh one.
   let coachHandoff = null;
 
+  const NOTES_RE = /\b(note|notes|log|logg|record|journal|vault|progress\s+to)\b/i;
+  const STOPPED_LABEL = {
+    completed: "completed",
+    no_session: "stopped without composing a session",
+    max_turns: "hit the turn limit",
+    refusal: "declined the request",
+  };
+
   function viewCoach(root) {
     root.classList.add("narrow");
     root.innerHTML = `
       <div class="card">
         <p class="muted" style="margin:0 0 12px">
-          Ask in plain English. The agent does <b>one</b> piece of language
-          reasoning — turning your words into a time budget and topic — then
-          calls <b>MCP tools</b> to compose the session. It never picks the
-          words or the schedule itself.
+          A live view of the agent. It makes <b>one</b> language judgement —
+          your words → minutes + topic — then calls <b>MCP tools</b> to compose
+          the session. It never chooses the words or the schedule; the
+          deterministic core does. The tool trace below is what actually ran.
         </p>
-        <label class="field"><span>Your request</span>
+        <label class="field"><span>Request</span>
           <textarea id="c-req" class="input" rows="3"
             style="resize:vertical;font:inherit">${PRESET.plan}</textarea></label>
         <label class="field"><span>Mode</span>
           <div class="seg seg-full" id="c-mode">
-            <button data-m="plan" class="on">Plan a session</button>
+            <button data-m="plan" class="on">Plan (learning server)</button>
             <button data-m="converse">Converse (both servers)</button>
           </div>
         </label>
-        <button class="btn block" id="c-go">Ask the coach</button>
+        <button class="btn block" id="c-go">Run the agent</button>
         <div id="c-msg" class="mini mt-3" aria-live="polite">
-          <b>Plan</b> uses the learning server only. <b>Converse</b> also asks the
-          notes server to record something — the request has to say so.</div>
+          Converse adds the notes server — the request has to ask it to record
+          something (the example does).</div>
       </div>
       <div id="c-out"></div>`;
 
     let mode = "plan";
     let last = null; // the most recent agent result, for the handoff to Study
-    $$("#c-mode button").forEach((b) => (b.onclick = () => {
-      mode = b.dataset.m;
-      $$("#c-mode button").forEach((x) => x.classList.toggle("on", x === b));
-      // swap the example to match the mode, unless the user has typed their own
+    const setMode = (m) => {
+      mode = m;
+      $$("#c-mode button").forEach((x) => x.classList.toggle("on", x.dataset.m === m));
       const cur = $("#c-req").value.trim();
-      if (cur === PRESET.plan || cur === PRESET.converse || cur === "") $("#c-req").value = PRESET[mode];
-    }));
+      if (cur === PRESET.plan || cur === PRESET.converse || cur === "") $("#c-req").value = PRESET[m];
+    };
+    $$("#c-mode button").forEach((b) => (b.onclick = () => setMode(b.dataset.m)));
     $("#c-go").onclick = () => withBusy($("#c-go"), run);
     $("#c-req").onkeydown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); $("#c-go").click(); }
     };
 
     async function run() {
-      const request = $("#c-req").value.trim();
+      let request = $("#c-req").value.trim();
       const msg = $("#c-msg"), out = $("#c-out");
       if (request.length < 3) { msg.innerHTML = `<span class="err-text">Type a request first.</span>`; return; }
-      msg.textContent = mode === "converse"
-        ? "running the cross-server loop…" : "parsing intent and calling tools…";
+      // A notes request in Plan mode can't reach the notes server -> switch.
+      if (mode === "plan" && NOTES_RE.test(request)) {
+        setMode("converse");
+        toast("Switched to Converse — that request needs the notes server", "");
+      }
+      msg.textContent = "running…";
       out.innerHTML = skeleton();
       try {
         const r = await api("/agent/plan", { method: "POST", body: JSON.stringify(
           { user_id: uid(), request, mode }) });
         last = r;
-        msg.textContent = `Agent stopped: ${r.stopped} · ${r.turns} LLM turn${r.turns === 1 ? "" : "s"}.`;
+        msg.textContent = "";
         out.innerHTML = renderResult(r);
       } catch (e) {
         out.innerHTML = "";
         msg.innerHTML = `<span class="err-text">${esc(e.message)}</span>` +
           (String(e.message).includes("not configured")
-            ? `<br><span class="muted">This deployment has no Anthropic API key set, so the agent loop is disabled. The deterministic study flow still works under <a href="#/study">Study</a>.</span>`
+            ? `<br><span class="muted">No Anthropic API key on this deployment, so the agent loop is off. The deterministic study flow still works under <a href="#/study">Study</a>.</span>`
             : "");
       }
     }
 
     function renderResult(r) {
-      const chips = [];
       const iv = r.intent || {};
+      const chips = [];
       if (iv.minutes_available != null) chips.push(`${iv.minutes_available} min`);
-      if (iv.topic) chips.push(esc(iv.topic));
+      chips.push(iv.topic ? esc(iv.topic) : "no topic");
       const servers = (r.servers_used || []).map((s) =>
         `<span class="pill">${esc(SERVER_LABEL[s] || s)}</span>`).join(" ");
       const steps = (r.tool_calls || []).map((t, i) =>
@@ -281,21 +293,27 @@
         <ul class="wl">${ws.map((w) =>
           `<li><b>${esc(w.article ? w.article + " " : "")}${esc(w.lemma)}</b>
            <span>${esc(shortGloss(w.translation_en || w.gloss || ""))}</span></li>`).join("")}</ul>`;
+      const ok = r.stopped === "completed";
+      const nTools = (r.tool_calls || []).length;
 
       return `
         <div class="card">
-          ${r.reply ? `<p style="margin:0 0 10px;font-size:15px">${esc(r.reply)}</p>` : ""}
-          ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="pill">${c}</span>`).join(" ")}</div>` : ""}
-          ${servers ? `<div class="chips mt-3"><span class="muted" style="margin-right:6px">servers used:</span>${servers}</div>` : ""}
+          <div class="chips">
+            <span class="pill">${esc(STOPPED_LABEL[r.stopped] || r.stopped)}</span>
+            <span class="pill">${r.turns} LLM turn${r.turns === 1 ? "" : "s"}</span>
+          </div>
 
-          <div class="card-h" style="margin-top:16px"><h3>How it did it</h3><span class="sp"></span>
-            <span class="muted">${(r.tool_calls || []).length} MCP tool call${(r.tool_calls || []).length === 1 ? "" : "s"}</span></div>
-          <p class="mini" style="margin:-4px 0 6px">The agent has no scheduling logic of its own — it composed this by calling:</p>
-          ${steps ? `<ol class="steps">${steps}</ol>`
-                  : `<p class="muted">No tools were called — the agent ${esc(r.stopped)}.</p>`}
+          <div class="card-h" style="margin-top:14px"><h3>Intent parsed</h3></div>
+          <div class="chips">${chips.map((c) => `<span class="pill">${c}</span>`).join(" ")}</div>
+          ${servers ? `<div class="chips mt-3"><span class="muted" style="margin-right:6px">servers:</span>${servers}</div>` : ""}
 
-          ${wordList("Review words", r.review_words)}
-          ${wordList("New words", r.new_words)}
+          <div class="card-h" style="margin-top:16px"><h3>Tools the agent called</h3><span class="sp"></span>
+            <span class="muted">${nTools} call${nTools === 1 ? "" : "s"}</span></div>
+          <p class="mini" style="margin:-4px 0 6px">The agent has no scheduling logic of its own.</p>
+          ${steps ? `<ol class="steps">${steps}</ol>` : `<p class="muted">No tools were called.</p>`}
+
+          ${ok ? wordList("Review words", r.review_words) + wordList("New words", r.new_words)
+               : `<p class="muted mt-3">No session composed (${esc(STOPPED_LABEL[r.stopped] || r.stopped)}).</p>`}
 
           ${r.session_id ? `<button class="btn block mt-3" id="c-open">Study this session</button>` : ""}
         </div>`;
@@ -320,7 +338,7 @@
   const ROUTES = [
     { path: "/", name: "Home", icon: "home", view: viewHome },
     { path: "/study", name: "Study", icon: "cards", view: viewStudy },
-    { path: "/coach", name: "Coach", icon: "spark", view: viewCoach },
+    { path: "/coach", name: "Agent", icon: "spark", view: viewCoach },
     { path: "/practice", name: "Practice", icon: "chat", view: viewPractice },
     { path: "/browse", name: "Browse", icon: "book", view: viewBrowse },
     { path: "/progress", name: "Progress", icon: "chart", view: viewProgress },
