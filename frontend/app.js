@@ -1083,7 +1083,7 @@
       <div class="card">
         <div class="card-h"><h3>About</h3></div>
         <div class="muted">learn-german — a deterministic spaced-repetition trainer with an
-        agentic MCP layer. <a href="https://claude.com/claude-code" target="_blank" rel="noreferrer">built with Claude Code</a>.</div>
+        agentic MCP layer. <a href="https://github.com/nabeelahmad123/deutsch-ai" target="_blank" rel="noreferrer">source on GitHub</a>.</div>
       </div>`;
     $$("#theme button").forEach((b) => {
       b.classList.toggle("on", b.dataset.v === theme);
