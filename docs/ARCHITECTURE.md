@@ -50,7 +50,7 @@
      report.py      →  docs/EVALUATION.md + plots
 ```
 
-## Non-negotiable principles (CLAUDE.md section 2) — and where they live
+## Design rules — and where they're enforced
 
 | # | principle | enforced by |
 |---|---|---|
@@ -87,7 +87,7 @@ of both servers; *"…and note where I'm at"* makes the agent call `log_progress
 on server #2, appending a dated section to `_vault/progress.md`. The trace
 interleaves `learning.tool.*` and `notes.tool.*` with `agent.turn` between them.
 
-## Data model (CLAUDE.md section 5)
+## Data model
 
 ```
 words(id, lemma, article, plural, translation_en, cefr_level, frequency_rank, topic, ipa_or_audio_ref)
@@ -106,9 +106,9 @@ into indexed look-ups instead of replaying every log in Python per request.
 
 Schema is owned by Alembic (`backend/db/migrations/`); `seed.sql` is data-only.
 CEFR level is *approximated* from frequency band, and topic from a gloss-keyword
-tagger — both documented as approximations, not ground truth (section 6).
+tagger — both documented as approximations, not ground truth.
 
-## Failure handling (CLAUDE.md section 11)
+## Failure handling
 
 `backend/agent/failure_injection.py` wraps the tool client to deliberately time
 out a call, return a malformed response, or (as a request transformer) strip a

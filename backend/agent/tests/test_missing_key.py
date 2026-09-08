@@ -1,5 +1,5 @@
 """Without Anthropic credentials the agent fails fast with a clear message
-rather than a raw SDK traceback (CLAUDE.md section 11: never crash silently)."""
+rather than a raw SDK traceback."""
 
 import pytest
 

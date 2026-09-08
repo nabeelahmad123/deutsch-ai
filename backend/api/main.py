@@ -1,8 +1,8 @@
-"""FastAPI app -- deliberately thin (CLAUDE.md section 4).
+"""FastAPI app -- deliberately thin.
 
 It exposes CRUD over the data model and will later delegate session composition
 to ``backend/core`` and expose nothing that the agent needs directly (the agent
-talks to MCP servers, not this API -- non-negotiable principle #3).
+talks to MCP servers, not this API -- a core design rule).
 """
 
 from __future__ import annotations

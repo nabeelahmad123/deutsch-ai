@@ -106,8 +106,10 @@ def append_note(name: str, content: str) -> NoteInfo:
 def log_progress(
     summary: str, *, heading: str | None = None, date: str | None = None
 ) -> ProgressEntry:
-    """Append a dated section to progress.md -- the weekly-summary export
-    (CLAUDE.md section 10). Returns the note info and the block that was added."""
+    """Append a dated section to progress.md (the weekly-summary export).
+
+    Returns the note info and the block that was added.
+    """
     day = (date or dt.date.today().isoformat()).strip()
     title = heading.strip() if heading else "Progress"
     block = f"## {day} — {title}\n\n{summary.strip()}\n"

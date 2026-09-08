@@ -1,4 +1,4 @@
-"""Synthetic learner simulator (CLAUDE.md section 12).
+"""Synthetic learner simulator.
 
 A parameterised forgetting-curve model. For a word with memory half-life ``h``
 (days) reviewed after ``elapsed`` days, the learner's true recall probability is
@@ -12,7 +12,7 @@ gain that this learner fails to retain); a lapse resets ``h``.
 Three learner types -- fast / average / forgetful -- differ in ``decay_rate``,
 ``noise`` and ``learning_gain``, so they visibly diverge in retention.
 
-``Simulator.review`` is the primitive the offline evaluation (LG-17) drives with
+``Simulator.review`` is the primitive the offline evaluation drives with
 SM-2 / HLR-chosen intervals; ``generate_logs`` produces standalone interaction
 logs on the simulator's own expanding schedule. Plain Python + a seeded
 ``random.Random`` -- fully deterministic. No DB, no LLM.

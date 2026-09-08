@@ -7,10 +7,10 @@ The agent's **planning loop** is scored on three axes. Session sanity is checked
 | axis | pass |
 |---|---|
 | intent — minutes | 12/12 |
-| intent — topic | 11/12 |
+| intent — topic | 12/12 |
 | tool sequence | 12/12 |
 | session sanity | 12/12 |
-| **overall** | **11/12** |
+| **overall** | **12/12** |
 
 | case | request | minutes (want / got) | topic (want / got) | tools | session | pass |
 |---|---|---|---|:--:|:--:|:--:|
@@ -18,7 +18,7 @@ The agent's **planning loop** is scored on three axes. Session sanity is checked
 | `explicit_travel` | 20 minutes please, travel vocabulary | 20 / 20 | travel / travel | y | y | y |
 | `exam_prep` | I've got 15 minutes and an exam coming up | 15 / 15 | — / — | y | y | y |
 | `minutes_only` | quick session, about 5 minutes | 5 / 5 | — / — | y | y | y |
-| `half_an_hour` | I've got half an hour to study German | 30 / 30 | — / work | y | y | N |
+| `half_an_hour` | I've got half an hour to study German | 30 / 30 | — / — | y | y | y |
 | `topic_only_trip` | help me brush up before my trip to Berlin | any / 10 | travel / travel | y | y | y |
 | `topic_food` | 10 minutes on food and cooking words | 10 / 10 | food / food | y | y | y |
 | `vague` | help me with my German | any / 10 | — / — | y | y | y |
@@ -27,20 +27,15 @@ The agent's **planning loop** is scored on three axes. Session sanity is checked
 | `tiny` | two minutes only | 2 / 2 | — / — | y | y | y |
 | `travel_short` | 5 min, holiday phrases | 5 / 5 | travel / travel | y | y | y |
 
-## Failures
-
-- **`half_an_hour`** — invented topic 'work'
-  - tool calls: `['get_user_profile', 'create_learning_session', 'create_quiz']`
-  - Known limitation: on a bare "study German" request with no subject, Haiku
-    sometimes still guesses `work`. It composes a valid session either way; the
-    only effect is the new words are work-flavoured. A stronger model or a
-    firmer prompt closes this.
+All cases passed.
 
 ## Method
 
-- Each case runs the **real** agent (`run_session`) against a freshly seeded SQLite DB. No mocking of the LLM.
-- **intent** — parsed minutes within tolerance, topic exactly right (`null`/`general` both pass when no topic is implied).
+- Each case runs the **real** agent (`run_session`) — no LLM mocking — against a seeded DB whose eval user has ~18 twelve-day-old reviews, so there is a real due list and seen set for the session checks to bite.
+- **intent** — parsed minutes within tolerance; topic exactly right (`null`/`general` both pass when no topic is implied).
 - **tool sequence** — `create_learning_session` exactly once, `create_quiz` after it, and never a grading tool inside the planning loop.
-- **session sanity** — composed from the DB, not the model's word: review words really are due, "new" words really are unseen, the lists are disjoint, and the count fits the time budget.
+- **session sanity** — read back from the DB, not the model's word: review words really are due, "new" words really are unseen, the lists are disjoint, and the estimated time cost (the scheduler's own 8s/review + 20s/new-word constants) fits the requested minutes within 25%.
+
+The suite is not a fixed score: it surfaced real bugs on earlier runs (empty sessions for `topic=exam`; a naive word-count budget check), now fixed in `backend/core` and the harness. Topic inference on a bare "study German" request (`vague`, `half_an_hour`) is the borderline case — Haiku occasionally still guesses `work`.
 
 Run on `claude-haiku-4-5-20251001` — the model the deployment uses (Haiku keeps the live demo cheap). To compare against a stronger model: `python -m backend.agent.eval --model claude-opus-5`.

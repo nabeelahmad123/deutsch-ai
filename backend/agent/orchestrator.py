@@ -1,12 +1,12 @@
-"""Agent tool-calling loop against the Anthropic API (CLAUDE.md section 9).
+"""Agent tool-calling loop against the Anthropic API.
 
 The agent does ONE piece of natural-language reasoning -- turning a request like
 "I have 10 minutes, German for work" into a time budget + topic -- and then calls
 MCP server #1 tools to compose the session. It never picks words or computes
-intervals itself (non-negotiable principle #2).
+intervals itself (a core design rule).
 
 Every LLM turn is traced as an ``agent_decision`` and every tool call is traced
-by ``MCPToolClient`` (principle #4).
+by ``MCPToolClient`` .
 
 ``run_session`` runs the LLM loop: parse intent -> compose the session -> build
 the quiz. Answers then come in one at a time through ``LearningSession.answer``
@@ -131,7 +131,7 @@ class MissingAPIKey(RuntimeError):
     """Raised when the agent is run without Anthropic credentials configured.
 
     The deterministic core, the MCP servers and the study API all run without a
-    key -- only the agent's tool-calling loop needs one (CLAUDE.md section 9).
+    key -- only the agent's tool-calling loop needs one.
     """
 
 
@@ -393,7 +393,7 @@ def start_session(
     )
 
 
-# --- cross-server orchestration (LG-12) -------------------------------------
+# --- cross-server orchestration -------------------------------------
 
 CONVERSATION_MAX_TURNS = 10
 
@@ -432,7 +432,7 @@ def run_conversation(
     tracer: Tracer | None = None,
     model: str | None = None,
 ) -> ConversationResult:
-    """A single conversation that may span both MCP servers (CLAUDE.md sec. 10).
+    """A single conversation that may span both MCP servers.
 
     Default ``mcp_client`` exposes learning + notes tools together; the trace
     shows which server each call went to.

@@ -1,6 +1,6 @@
 # Data sources & licensing
 
-`CLAUDE.md` section 6: A1–B2 only, ~4,000 frequency-ranked words, CEFR approximated
+Scope: A1–B2 only, ~4,000 frequency-ranked words, CEFR approximated
 from frequency band. **Check licensing before redistributing any list verbatim —
 regenerate/derive rather than copy wholesale where the license is unclear.**
 
@@ -36,7 +36,7 @@ Wiktionary contributors, https://de.wiktionary.org, CC BY-SA 4.0.
 
 ## Pronunciation
 
-No audio dataset (section 6). We store an IPA transcription from Wiktionary; audio
+No audio dataset. We store an IPA transcription from Wiktionary; audio
 is generated on demand via a TTS API later, if in scope.
 
 ## Reproducibility

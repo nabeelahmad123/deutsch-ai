@@ -1,6 +1,6 @@
 """Alembic migration environment.
 
-Schema is authoritative here (CLAUDE.md section 4: backend/db/migrations/). The
+Schema is authoritative here. The
 URL comes from $DATABASE_URL; tests point it at SQLite, deploy at Postgres.
 """
 

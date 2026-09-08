@@ -8,7 +8,7 @@ on:
 jobs:
   # The deterministic core, with a minimal dependency set and no agent/LLM/MCP
   # packages installed at all -- proves backend/core stays import-clean of them
-  # (CLAUDE.md non-negotiable principle #1).
+  # (docs/DESIGN.md non-negotiable principle #1).
   core:
     runs-on: ubuntu-latest
     steps:

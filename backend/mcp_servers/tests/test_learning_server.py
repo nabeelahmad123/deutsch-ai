@@ -1,7 +1,7 @@
-"""MCP server #1 -- tool discovery + invocation (LG-06).
+"""MCP server #1 -- tool discovery + invocation.
 
 Calls run in-process via ``server.call_tool``; the standalone MCP-client /
-Inspector session is LG-08.
+Inspector session is.
 """
 
 import asyncio
@@ -81,7 +81,7 @@ def test_limit_is_clamped(seeded_db):
     assert res.is_error is False
 
 
-# --- LG-07: session + quiz + grading + state ---------------------------------
+# ---: session + quiz + grading + state ---------------------------------
 
 
 def test_create_learning_session_persists_and_hydrates(seeded_db):
@@ -171,7 +171,7 @@ def test_update_learning_state_unknown_word(seeded_db):
         _call("update_learning_state", {"user_id": 1, "word_id": 9999, "correct": True})
 
 
-# --- LG-08: tracing + vocab resource ---------------------------------------
+# ---: tracing + vocab resource ---------------------------------------
 
 
 def test_every_tool_call_is_traced(seeded_db, tmp_path):

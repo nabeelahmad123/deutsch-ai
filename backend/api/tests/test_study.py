@@ -1,4 +1,4 @@
-"""Study-flow endpoints for the minimal frontend (LG-19)."""
+"""Study-flow endpoints for the minimal frontend."""
 
 import base64
 import json

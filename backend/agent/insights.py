@@ -4,8 +4,7 @@ The agent reads the learner's recent misses and diagnostic labels from the
 LEARNING server (``get_mistake_summary`` / ``get_weak_words``), finds concrete
 patterns, and records a dated summary in the NOTES vault via the SECONDARY
 server (``log_progress``). One natural-language reasoning step, two independent
-tool surfaces -- the orchestration this project exists to demonstrate
-(CLAUDE.md section 10). It never touches scheduling.
+tool surfaces -- the orchestration this project exists to demonstrate. It never touches scheduling.
 
     python -m backend.agent --insights --user-id 1
 """

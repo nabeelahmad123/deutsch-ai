@@ -1,6 +1,6 @@
-"""Deliberate fault injection for the agent (CLAUDE.md section 11).
+"""Deliberate fault injection for the agent.
 
-A first-class deliverable. Three fault kinds:
+Three fault kinds:
 
   - ``timeout``            -- the tool call raises a timeout error (after an
                              optional, capped real delay). Never hangs forever.
@@ -14,7 +14,7 @@ A first-class deliverable. Three fault kinds:
 ``MultiServerToolClient``) with the same ``tool_specs()`` / ``call()`` interface,
 so ``run_session`` / ``run_conversation`` don't know they're being sabotaged.
 Every injected fault is traced (``fault.<kind>.<tool>``) and recorded on
-``.injected`` for the recovery-rate report (LG-14).
+``.injected`` for the recovery-rate report.
 """
 
 from __future__ import annotations

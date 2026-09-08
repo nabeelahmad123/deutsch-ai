@@ -10,7 +10,7 @@ is pure INSERTs and is applied after `alembic upgrade head` -- see
 `python -m backend.db.seed`. It is committed; the raw/derived corpora are not.
 
 Each row gets an approximate CEFR level (assign_cefr) and an approximate topic
-(assign_topic) -- both documented as approximations (CLAUDE.md section 6).
+(assign_topic) -- both documented as approximations.
 """
 
 from __future__ import annotations

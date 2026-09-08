@@ -1,11 +1,11 @@
-"""Entry point for MCP server #2 -- the notes vault (CLAUDE.md section 10).
+"""Entry point for MCP server #2 -- the notes vault.
 
-Its own process, its own transport (non-negotiable principle #5). Transport
+Its own process, its own transport (a core design rule). Transport
 defaults to stdio; set SECONDARY_MCP_TRANSPORT=streamable-http to serve over HTTP
 on SECONDARY_MCP_HOST:SECONDARY_MCP_PORT (what docker-compose uses).
 
 SECONDARY_MCP_KIND selects the surface -- "notes" (implemented) or "calendar"
-(the other option in section 10; not built).
+a calendar server was the alternative, not built.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ def main() -> None:
     if kind == "calendar":
         raise SystemExit(
             "SECONDARY_MCP_KIND=calendar is not implemented; this project ships the "
-            "notes surface (section 10). Set SECONDARY_MCP_KIND=notes."
+            "notes surface. Set SECONDARY_MCP_KIND=notes."
         )
     if kind != "notes":
         raise SystemExit(f"unknown SECONDARY_MCP_KIND={kind!r} (expected 'notes' or 'calendar')")

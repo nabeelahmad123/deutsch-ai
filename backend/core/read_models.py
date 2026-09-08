@@ -2,7 +2,7 @@
 
 MCP tool bodies call only ``backend.core`` (scheduler for decisions, this module
 for hydration/profile). Deterministic given ``as_of``; no LLM, DB access only --
-same rules as ``scheduler.py`` (CLAUDE.md section 7).
+same rules as ``scheduler.py``.
 """
 
 from __future__ import annotations
@@ -169,7 +169,7 @@ def summarise_session(session: DbSession, session_id: int, words_covered: int) -
     )
 
 
-# --- vocab resource projections (LG-08) --------------------------------------
+# --- vocab resource projections --------------------------------------
 
 _CEFR_LEVELS = ("A1", "A2", "B1", "B2")
 VOCAB_RESOURCE_TEMPLATES = ("vocab://words/{cefr_level}", "vocab://word/{lemma}")
@@ -198,7 +198,7 @@ def vocab_overview(session: DbSession) -> dict:
         "by_cefr_level": {lvl: by_cefr.get(lvl, 0) for lvl in _CEFR_LEVELS},
         "by_topic": by_topic,
         "resource_templates": list(VOCAB_RESOURCE_TEMPLATES),
-        "note": "CEFR level is approximated from frequency band (CLAUDE.md section 6).",
+        "note": "CEFR level is approximated from frequency band.",
     }
 
 

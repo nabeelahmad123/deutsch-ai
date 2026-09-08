@@ -1,5 +1,4 @@
-"""Lightweight username/password login for the frontend (CLAUDE.md section 13
-lists a full auth system as a non-goal -- this only identifies each user).
+"""Lightweight username/password login for the frontend.
 
 No tokens, no cookies, no sessions: register/login return the user's id and the
 browser remembers it. Anonymous users (``POST /users``, the agent, the

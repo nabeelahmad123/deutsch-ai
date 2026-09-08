@@ -4,7 +4,7 @@ Revision ID: 0001_initial
 Revises:
 Create Date: 2026-09-03
 
-Mirrors backend/db/models.py (CLAUDE.md section 5). sa.Enum renders as a native
+Mirrors backend/db/models.py. sa.Enum renders as a native
 ENUM type on Postgres and as VARCHAR + CHECK on SQLite, so this migration runs on
 both.
 """

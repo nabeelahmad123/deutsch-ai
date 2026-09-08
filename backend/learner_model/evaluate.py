@@ -1,4 +1,4 @@
-"""Offline evaluation harness (CLAUDE.md section 12).
+"""Offline evaluation harness.
 
 Compares three scheduling strategies -- random / SM-2 / HLR -- on the learner
 simulator, along two independent axes:
@@ -16,7 +16,7 @@ frozen. Deterministic given ``seed``.
 
     python -m backend.learner_model.evaluate        # prints the metrics dict
 
-Plots + docs/EVALUATION.md are LG-18.
+Plots + docs/EVALUATION.md are.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Calibration + retention metrics for the offline evaluation (section 12).
+"""Calibration + retention metrics for the offline evaluation.
 
 All take equal-length arrays of predicted recall probabilities and observed
 0/1 outcomes. Pure NumPy, no sklearn.

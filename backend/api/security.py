@@ -1,6 +1,6 @@
 """Password hashing for the lightweight login (stdlib only, no deps).
 
-Not a security showcase -- CLAUDE.md lists a full auth system as a non-goal --
+Not a security showcase -- docs/DESIGN.md lists a full auth system as a non-goal --
 just enough to tell users apart: a salted scrypt hash, constant-time verify. No
 tokens or sessions; the frontend remembers the returned user id locally.
 """

@@ -1,12 +1,12 @@
-"""MCP server #2 -- a Markdown notes vault (CLAUDE.md section 10).
+"""MCP server #2 -- a Markdown notes vault.
 
-A genuinely separate tool surface from server #1 (non-negotiable principle #5):
+A genuinely separate tool surface from server #1 (a core design rule):
 its own process, its own transport/port, its own storage (the filesystem, not
 Postgres), and no imports from the learning server or backend.core. The agent is
 the only thing that spans both -- e.g. read progress from server #1, then
 ``log_progress`` here.
 
-Every tool call is traced (principle #4).
+Every tool call is traced.
 """
 
 from __future__ import annotations
