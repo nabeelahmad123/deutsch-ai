@@ -60,15 +60,23 @@ def render(scores: list[CaseScore], *, model: str) -> str:
         "",
         "## Method",
         "",
-        "- Each case runs the **real** agent (`run_session`) against a freshly "
-        "seeded SQLite DB. No mocking of the LLM.",
-        "- **intent** — parsed minutes within tolerance, topic exactly right "
+        "- Each case runs the **real** agent (`run_session`) — no LLM mocking — "
+        "against a seeded DB whose eval user has ~18 twelve-day-old reviews, so "
+        "there is a real due list and seen set for the session checks to bite.",
+        "- **intent** — parsed minutes within tolerance; topic exactly right "
         "(`null`/`general` both pass when no topic is implied).",
         "- **tool sequence** — `create_learning_session` exactly once, `create_quiz` "
         "after it, and never a grading tool inside the planning loop.",
-        "- **session sanity** — composed from the DB, not the model's word: review "
-        'words really are due, "new" words really are unseen, the lists are '
-        "disjoint, and the count fits the time budget.",
+        "- **session sanity** — read back from the DB, not the model's word: "
+        'review words really are due, "new" words really are unseen, the lists '
+        "are disjoint, and the estimated time cost (the scheduler's own "
+        "8s/review + 20s/new-word constants) fits the requested minutes within 25%.",
+        "",
+        "The suite is not a fixed score: it surfaced real bugs on earlier runs "
+        "(empty sessions for `topic=exam`; a naive word-count budget check), now "
+        "fixed in `backend/core` and the harness. Topic inference on a bare "
+        '"study German" request (`vague`, `half_an_hour`) is the borderline case '
+        "— Haiku occasionally still guesses `work`.",
         "",
         f"Run on `{model}` — the model the deployment uses (Haiku keeps the live "
         "demo cheap). To compare against a stronger model: "

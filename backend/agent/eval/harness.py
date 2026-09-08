@@ -8,11 +8,13 @@ from collections.abc import Iterable
 
 from backend.agent.eval.cases import CASES, CaseScore, EvalCase
 from backend.agent.orchestrator import SessionRequest, run_session
+from backend.core.session_budget import SECONDS_PER_NEW_WORD, SECONDS_PER_REVIEW
 
-# A session is "over budget" past this many words -- deliberately loose (roughly
-# one word per 15s), so it catches gross violations without pinning the exact
-# plan_budget formula.
-_WORDS_PER_MINUTE_CEILING = 4
+# "Fits the budget" = the session's estimated time cost, under the scheduler's
+# own per-item constants, is within 25% of the minutes asked for. Reviews are
+# cheap (~8s), so a review backlog legitimately packs many items into a short
+# session -- this checks time, not a flat word count.
+_BUDGET_SLACK = 1.25
 
 
 def score_case(
@@ -63,14 +65,16 @@ def score_case(
         notes.append(f"create_learning_session called {compose_count}x")
 
     n_words = len(review_ids) + len(new_ids)
-    ceiling = max(1, (case.expect_minutes or minutes or 10)) * _WORDS_PER_MINUTE_CEILING
+    budget_s = max(1, (case.expect_minutes or minutes or 10)) * 60
+    est_s = len(review_ids) * SECONDS_PER_REVIEW + len(new_ids) * SECONDS_PER_NEW_WORD
+    over_budget = est_s > budget_s * _BUDGET_SLACK
     session_ok = (
         stopped == "completed"
         and n_words > 0
         and review_ids.issubset(due_ids)  # no phantom review words
         and new_ids.isdisjoint(seen_ids)  # "new" really is unseen
         and review_ids.isdisjoint(new_ids)
-        and n_words <= ceiling
+        and not over_budget
     )
     if stopped != "completed":
         notes.append(f"stopped={stopped}")
@@ -83,8 +87,11 @@ def score_case(
             notes.append(f"{len(new_ids & seen_ids)} 'new' words were already seen")
         if not review_ids.isdisjoint(new_ids):
             notes.append("review/new word lists overlap")
-        if n_words > ceiling:
-            notes.append(f"{n_words} words for the budget (ceiling {ceiling})")
+        if over_budget:
+            notes.append(
+                f"{n_words} words (~{est_s / 60:.0f} min of work) for a "
+                f"{budget_s // 60}-min budget"
+            )
 
     return CaseScore(
         id=case.id,
@@ -116,13 +123,33 @@ def _seed_temp_db() -> None:
     db_seed.seed_from_sql(db_seed.SEED_SQL)
 
 
+def _seed_user_history(user_id: int) -> None:
+    """Give the eval user real review history so the session-sanity checks bite:
+    without a due list and a seen set, "review words are due" and "new words are
+    unseen" would both be vacuously true."""
+    import datetime as dt
+
+    from backend.core import scheduler
+    from backend.db.session import get_session
+
+    past = _now() - dt.timedelta(days=12)
+    with next(get_session()) as s:  # type: ignore[call-overload]
+        for i, wid in enumerate(range(1, 19)):  # 18 A1/A2 words
+            scheduler.update_after_review(
+                s, user_id, wid, correct=(i % 3 != 0), response_time_ms=1500, as_of=past
+            )
+        s.commit()
+
+
 def run_suite(
     *, model: str | None = None, cases: Iterable[EvalCase] = CASES, user_id: int = 1
 ) -> list[CaseScore]:
-    """Run the real agent on every case against a fresh seeded DB. Needs an
-    Anthropic key. The DB is shared across cases; a fresh user has no history,
-    so every case should compose new words only and zero review words."""
+    """Run the real agent on every case against a seeded DB where the user has
+    12-day-old review history (so ~all of it is due now). Needs an Anthropic key.
+    The planning loop never records reviews, so seen/due stay stable across
+    cases."""
     _seed_temp_db()
+    _seed_user_history(user_id)
     from backend.core import scheduler
     from backend.db.models import ReviewLog
     from backend.db.session import get_session
